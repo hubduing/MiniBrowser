@@ -2,13 +2,29 @@ namespace MiniBrowser.Services;
 
 /// <summary>
 /// Преобразование ввода из адресной строки в URL.
-/// URL по умолчанию — поиск в Google.
+/// Шаблон поиска приходит из настроек, по умолчанию — Google.
 /// </summary>
 public static class NavigationService
 {
     public const string SearchUrlTemplate = "https://www.google.com/search?q={0}";
 
-    public static string? BuildUrl(string input)
+    /// <summary>Имена движков в порядке отображения в ComboBox настроек.</summary>
+    public static string[] EngineNames { get; } = new[] { "Google", "Bing", "DuckDuckGo", "Яндекс" };
+
+    /// <summary>
+    /// Шаблон поиска по имени движка. Неизвестное имя — это ручная правка
+    /// конфига или устаревший список, поэтому молча откатываемся к Google.
+    /// </summary>
+    public static string SearchEngine(string name) => name switch
+    {
+        "Google" => SearchUrlTemplate,
+        "Bing" => "https://www.bing.com/search?q={0}",
+        "DuckDuckGo" => "https://duckduckgo.com/?q={0}",
+        "Яндекс" => "https://yandex.ru/search/?text={0}",
+        _ => SearchUrlTemplate,
+    };
+
+    public static string? BuildUrl(string input, string searchTemplate)
     {
         input = input.Trim();
         if (input.Length == 0) return null;
@@ -22,8 +38,15 @@ public static class NavigationService
         if (LooksLikeUrl(input))
             return "https://" + input;
 
-        // Иначе — это поисковый запрос (Google по умолчанию)
-        return string.Format(SearchUrlTemplate, Uri.EscapeDataString(input));
+        // Пустой шаблон из настроек не должен ломать адресную строку.
+        if (string.IsNullOrEmpty(searchTemplate))
+            searchTemplate = SearchUrlTemplate;
+
+        // Шаблон без {0} — ручная правка настроек; запрос дописываем в конец.
+        if (!searchTemplate.Contains("{0}", StringComparison.Ordinal))
+            return searchTemplate + Uri.EscapeDataString(input);
+
+        return string.Format(searchTemplate, Uri.EscapeDataString(input));
     }
 
     private static bool LooksLikeUrl(string s)
