@@ -252,6 +252,14 @@ public partial class MainWindow : Window, IBrowserActions
 
     void IBrowserActions.Reload() => _tabManager.ReloadActive();
 
+    // Заглушки панели меню: окно ещё не хостит MenuDrawerView (подключение — задача 8).
+    // Пока клавиши безопасно ничего не делают, а IsMenuOpen == false оставляет
+    // Esc существующей логике выхода из полноэкранного режима.
+    void IBrowserActions.ToggleMenu() { }
+    void IBrowserActions.ShowHistory() { }
+    void IBrowserActions.ShowBookmarks() { }
+    bool IBrowserActions.IsMenuOpen => false;
+
     private void SwitchTab(int delta)
     {
         var tabs = _tabManager.Tabs;

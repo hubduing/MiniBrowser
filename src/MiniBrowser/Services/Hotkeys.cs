@@ -16,9 +16,15 @@ public interface IBrowserActions
     void Reload();
     void ToggleFullscreen();
     void ExitFullscreen();
+    void ToggleMenu();
+    void ShowHistory();
+    void ShowBookmarks();
 
     /// <summary>true — пользователь включил F11-режим (не HTML5-полноэкранный).</summary>
     bool IsManualFullscreen { get; }
+
+    /// <summary>true — панель меню открыта (тогда Esc закрывает её).</summary>
+    bool IsMenuOpen { get; }
 }
 
 /// <summary>Горячие клавиши браузера.</summary>
@@ -36,12 +42,15 @@ public static class Hotkeys
                     case Key.L: actions.FocusAddressBar(); return true;
                     case Key.D: actions.AddBookmark(); return true;
                     case Key.R: actions.Reload(); return true;
+                    case Key.M: actions.ToggleMenu(); return true;
+                    case Key.H: actions.ShowHistory(); return true;
                     case Key.Tab: actions.NextTab(); return true;
                 }
                 break;
 
             case ModifierKeys.Control | ModifierKeys.Shift:
                 if (key == Key.Tab) { actions.PrevTab(); return true; }
+                if (key == Key.B) { actions.ShowBookmarks(); return true; }
                 break;
 
             case ModifierKeys.Alt:
@@ -53,6 +62,14 @@ public static class Hotkeys
         if (key == Key.F11)
         {
             actions.ToggleFullscreen();
+            return true;
+        }
+
+        // Esc закрывает панель меню, но только когда она открыта: иначе он
+        // обязан дойти до страницы и до логики выхода из полноэкранного режима.
+        if (key == Key.Escape && modifiers == ModifierKeys.None && actions.IsMenuOpen)
+        {
+            actions.ToggleMenu();
             return true;
         }
 
