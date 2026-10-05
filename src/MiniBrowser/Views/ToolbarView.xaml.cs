@@ -19,6 +19,12 @@ public partial class ToolbarView : UserControl
     /// <summary>Хранилище для наполнения меню закладками/историей.</summary>
     public StorageService? Storage { get; set; }
 
+    /// <summary>
+    /// Шаблон поиска приходит снаружи из настроек: тулбар не знает про SettingsService,
+    /// он только подставляет готовую строку в запрос.
+    /// </summary>
+    public string SearchTemplate { get; set; } = NavigationService.SearchUrlTemplate;
+
     /// <summary>true — идёт ввод: поле очищено, обновления URL не должны его трогать.</summary>
     private bool _editing;
 
@@ -124,7 +130,7 @@ public partial class ToolbarView : UserControl
     {
         if (e.Key == Key.Enter)
         {
-            var url = NavigationService.BuildUrl(AddressBox.Text);
+            var url = NavigationService.BuildUrl(AddressBox.Text, SearchTemplate);
             // Пустая строка — не запрос: просто возвращаем адрес, ничего не открывая.
             if (url is null)
             {

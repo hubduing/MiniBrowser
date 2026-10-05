@@ -11,6 +11,7 @@ namespace MiniBrowser;
 public partial class MainWindow : Window, IBrowserActions
 {
     private readonly StorageService _storage = new();
+    private readonly SettingsService _settings = new();
     private readonly TabManager _tabManager;
     private readonly string[] _startupUrls;
     private Tab? _titleTab;
@@ -47,6 +48,7 @@ public partial class MainWindow : Window, IBrowserActions
         TabStrip.NewTabRequested += () => NewTab();
 
         Toolbar.Storage = _storage;
+        Toolbar.SearchTemplate = _settings.Current.SearchUrl;
         Toolbar.NavigateRequested += url => _tabManager.NavigateActive(url);
         Toolbar.OpenRequested += url => _tabManager.NavigateActive(url);
         Toolbar.BackRequested += _tabManager.GoBackActive;
@@ -146,7 +148,7 @@ public partial class MainWindow : Window, IBrowserActions
             // только когда вкладка видима.
             foreach (var raw in _startupUrls)
             {
-                var url = NavigationService.BuildUrl(raw) ?? raw;
+                var url = NavigationService.BuildUrl(raw, _settings.Current.SearchUrl) ?? raw;
                 var tab = _tabManager.NewTab();
                 await _tabManager.Navigate(tab, url);
             }
