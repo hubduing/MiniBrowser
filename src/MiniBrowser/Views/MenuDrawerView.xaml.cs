@@ -26,7 +26,13 @@ public partial class MenuDrawerView : UserControl
     /// <summary>Затемнение, ✕ и Esc: хост скрывает панель.</summary>
     public event Action? CloseRequested;
 
-    /// <summary>Двойной клик по строке: дублирует NavigateRequested VM, чтобы разметка не знала о VM.</summary>
+    /// <summary>
+    /// Двойной клик по строке. Дублирует NavigateRequested VM: хост (Task 8) подписывается
+    /// на событие вида, не трогая VM, и заодно закрывает панель. OpenUrlCommand VM в разметке
+    /// не используется сознательно: клику нужен mouse-event с выделением строки, а тянуть пакет
+    /// behaviors ради InvokeCommandAction — лишняя зависимость; команда остаётся программным
+    /// путём VM и покрыта тестами.
+    /// </summary>
     public event Action<string>? OpenUrlRequested;
 
     public bool IsDrawerOpen { get; private set; }
@@ -116,9 +122,11 @@ public partial class MenuDrawerView : UserControl
         {
             FontSizeBox.SelectedItem = null;
             foreach (var raw in FontSizeBox.Items)
+                // Сравнение с допуском: значение прошло JSON и ползунки, младшие биты double
+                // могли поплыть, — точное равенство опознало бы «16» не всегда.
                 if (raw is ComboBoxItem { Tag: string tag }
                     && double.TryParse(tag, NumberStyles.Float, CultureInfo.InvariantCulture, out var size)
-                    && size == vm.Settings.Current.DefaultFontSize)
+                    && Math.Abs(size - vm.Settings.Current.DefaultFontSize) < 0.001)
                 {
                     FontSizeBox.SelectedItem = raw;
                     break;

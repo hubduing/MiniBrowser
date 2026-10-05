@@ -59,7 +59,9 @@
                                          MouseDoubleClick="List_MouseDoubleClick">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
-                                            <DockPanel LastChildFill="True" Margin="2">
+                                            <!-- Подсказка висит на строке: одиночный клик только выделяет её,
+                                                 без объяснения двойного клика панель кажется сломанной. -->
+                                            <DockPanel LastChildFill="True" Margin="2" ToolTip="Двойной клик — открыть">
                                                 <!-- Кнопка видит строку, а не VM: к команде дотягиваемся через ListBox. -->
                                                 <Button DockPanel.Dock="Right" Content="✕" VerticalAlignment="Center"
                                                         Style="{StaticResource FlatToolButton}"
@@ -132,8 +134,10 @@
                                          MouseDoubleClick="List_MouseDoubleClick">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
-                                            <!-- Отдельного удаления записей нет: только ClearHistory целиком. -->
-                                            <StackPanel Margin="2">
+                                            <!-- Подсказка висит на строке: одиночный клик только выделяет её,
+                                                 без объяснения двойного клика панель кажется сломанной.
+                                                 Отдельного удаления записей нет: только ClearHistory целиком. -->
+                                            <StackPanel Margin="2" ToolTip="Двойной клик — открыть">
                                                 <TextBlock Text="{Binding Title}" FontSize="13"
                                                            Foreground="{StaticResource T.Primary}"
                                                            TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
