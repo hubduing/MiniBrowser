@@ -30,6 +30,7 @@ public partial class MainWindow : Window, IBrowserActions
         TabStrip.Items = _tabManager.Tabs.ToList();
         TabStrip.TabActivated += t => _tabManager.ActivateTab(t);
         TabStrip.TabCloseRequested += CloseTab;
+        TabStrip.NewTabRequested += () => NewTab();
 
         Toolbar.Storage = _storage;
         Toolbar.NavigateRequested += url => _tabManager.NavigateActive(url);
@@ -147,7 +148,7 @@ public partial class MainWindow : Window, IBrowserActions
 
     private void NewTab()
     {
-        _tabManager.NewTab();
+        _tabManager.NewTab(HomeUrl);
         Toolbar.FocusAddress();
     }
 
