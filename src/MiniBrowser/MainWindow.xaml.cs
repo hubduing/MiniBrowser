@@ -50,6 +50,7 @@ public partial class MainWindow : Window, IBrowserActions
     private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
 
     private const int WhKeyboardLl = 13;
+    private const string HomeUrl = "https://www.google.com/";
     private static readonly IntPtr HookFailed = IntPtr.Zero;
     private LowLevelKeyboardProc? _hookProc;
     private IntPtr _keyboardHook = IntPtr.Zero;
@@ -138,7 +139,7 @@ public partial class MainWindow : Window, IBrowserActions
         }
         else
         {
-            NewTab();
+            _tabManager.NewTab(HomeUrl);
         }
     }
 
