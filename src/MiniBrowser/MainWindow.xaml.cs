@@ -35,7 +35,7 @@ public partial class MainWindow : Window, IBrowserActions
         InitializeComponent();
         _startupUrls = startupUrls ?? Array.Empty<string>();
 
-        _tabManager = new TabManager(ContentHost, _storage, this);
+        _tabManager = new TabManager(ContentHost, _storage, this, () => _settings.EffectiveZoom);
         _tabManager.TabsChanged += RefreshTabStrip;
         _tabManager.ActiveTabChanged += OnActiveTabChanged;
         _tabManager.StateChanged += _ => RefreshNavState();

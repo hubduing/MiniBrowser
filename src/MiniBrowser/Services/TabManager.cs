@@ -11,6 +11,8 @@ public sealed class TabManager
     private readonly Panel _contentHost;
     private readonly StorageService _storage;
     private readonly IBrowserActions _actions;
+    // Источник текущего множителя масштаба — хост даёт `() => _settings.EffectiveZoom`.
+    private readonly Func<double> _zoomProvider;
     private readonly List<Tab> _tabs = new();
     private readonly Dictionary<Tab, BrowserTabView> _views = new();
     private readonly TabSleeper _sleeper;
@@ -29,11 +31,12 @@ public sealed class TabManager
     public BrowserTabView? ActiveView =>
         ActiveTab is null ? null : _views.GetValueOrDefault(ActiveTab);
 
-    public TabManager(Panel contentHost, StorageService storage, IBrowserActions actions)
+    public TabManager(Panel contentHost, StorageService storage, IBrowserActions actions, Func<double> zoomProvider)
     {
         _contentHost = contentHost;
         _storage = storage;
         _actions = actions;
+        _zoomProvider = zoomProvider ?? throw new ArgumentNullException(nameof(zoomProvider));
         _sleeper = new TabSleeper(this);
         _sleeper.Start();
     }
@@ -41,7 +44,7 @@ public sealed class TabManager
     public Tab NewTab(string? url = null)
     {
         var tab = new Tab();
-        var view = new BrowserTabView(tab, _actions);
+        var view = new BrowserTabView(tab, _actions, _zoomProvider);
 
         view.Navigated += HandleNavigated;
         view.StateChanged += t => StateChanged?.Invoke(t);
@@ -141,6 +144,13 @@ public sealed class TabManager
     public void GoForwardActive() => ActiveView?.GoForward();
     public void ReloadActive() => ActiveView?.Reload();
     public void StopActive() => ActiveView?.Stop();
+
+    /// <summary>Разослать новый множитель масштаба всем вкладкам (смена настройки).</summary>
+    public void ApplyZoomToAllTabs()
+    {
+        foreach (var view in _views.Values)
+            view.ZoomChanged();
+    }
 
     /// <summary>Выгрузить WebView2 неактивной вкладки (освободить память).</summary>
     public void Sleep(Tab tab)

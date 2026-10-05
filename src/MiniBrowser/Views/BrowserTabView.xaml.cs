@@ -15,6 +15,12 @@ public partial class BrowserTabView : UserControl
 {
     private readonly Tab _tab;
     private readonly IBrowserActions _actions;
+    // Вкладка не знает про файл настроек — текущий множитель спрашивает
+    // через делегат у хоста, чтобы не тянуть зависимость на SettingsService.
+    private readonly Func<double> _zoomProvider;
+    // Движок создаётся лениво, а ApplyZoom могут позвать раньше:
+    // значение ждёт создания CoreWebView2 и применяется в EnsureWebViewAsync.
+    private double? _pendingZoom;
     private WebView2? _web;
 
     public event Action<Tab, string>? Navigated;
@@ -24,11 +30,14 @@ public partial class BrowserTabView : UserControl
     /// <summary>Страница (видео) вошла/вышла из HTML5-полноэкранного режима.</summary>
     public event Action<Tab, bool>? FullscreenChanged;
 
-    public BrowserTabView(Tab tab, IBrowserActions actions)
+    public BrowserTabView(Tab tab, IBrowserActions actions, Func<double> zoomProvider)
     {
         InitializeComponent();
         _tab = tab;
         _actions = actions;
+        // Хост всегда передаёт лямбду с актуальным значением — null здесь
+        // означал бы вкладку в масштабе-наугад, поэтому падаем сразу.
+        _zoomProvider = zoomProvider ?? throw new ArgumentNullException(nameof(zoomProvider));
     }
 
     /// <summary>true — движок WebView2 уже создан для этой вкладки.</summary>
@@ -71,6 +80,18 @@ public partial class BrowserTabView : UserControl
 
     public void Stop() => _web?.CoreWebView2?.Stop();
 
+    /// <summary>Применить множитель масштаба к движку (или запомнить до его создания).</summary>
+    public void ApplyZoom(double zoom)
+    {
+        if (_web is not null)
+            _web.ZoomFactor = zoom;
+        else
+            _pendingZoom = zoom;
+    }
+
+    /// <summary>Перечитать множитель у хоста и применить — зовётся при смене настройки.</summary>
+    public void ZoomChanged() => ApplyZoom(_zoomProvider());
+
     /// <summary>Выгрузить движок вкладки, сохраняя URL для будущего возврата.</summary>
     public void Sleep()
     {
@@ -90,6 +111,9 @@ public partial class BrowserTabView : UserControl
         catch { /* уже закрыт */ }
 
         _web = null;
+        // Уснувшая вкладка при пробуждении обязана взять свежий множитель,
+        // а не устаревший — старое отложенное значение стираем.
+        _pendingZoom = null;
         _tab.IsAsleep = true;
         // Движок уничтожен — полноэкранного элемента больше не существует.
         IsPageFullscreen = false;
@@ -133,6 +157,10 @@ public partial class BrowserTabView : UserControl
             return false;
         }
 
+        // Новая вкладка обязана открыться в текущем масштабе, а не в 100%:
+        // отложенное значение (если ApplyZoom позвали до создания движка)
+        // побеждает свежий замер провайдера.
+        ApplyZoom(_pendingZoom ?? _zoomProvider());
         WireEvents();
         return true;
     }
