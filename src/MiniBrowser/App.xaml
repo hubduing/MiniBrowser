@@ -104,8 +104,18 @@
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="7" Padding="{TemplateBinding Padding}"
                                 SnapsToDevicePixels="True">
-                            <ScrollViewer x:Name="PART_ContentHost" Margin="0"
-                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                            <Grid>
+                                <ScrollViewer x:Name="PART_ContentHost" Margin="0"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                                <!-- Подсказку видно только в пустом поле; ввод её не перехватывает -->
+                                <TextBlock x:Name="Hint"
+                                           Text="Поиск или адрес"
+                                           Foreground="{StaticResource T.Muted}"
+                                           FontSize="13"
+                                           Margin="12,0"
+                                           VerticalAlignment="Center"
+                                           IsHitTestVisible="False"/>
+                            </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">

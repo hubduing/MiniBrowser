@@ -30,8 +30,10 @@
             <TextBox x:Name="AddressBox"
                      Margin="10,0"
                      Style="{StaticResource AddressBox}"
+                     PreviewMouseLeftButtonDown="Address_PreviewMouseLeftButtonDown"
                      GotKeyboardFocus="Address_GotKeyboardFocus"
                      LostKeyboardFocus="Address_LostKeyboardFocus"
+                     TextChanged="Address_TextChanged"
                      KeyDown="Address_KeyDown"/>
         </DockPanel>
     </Border>
