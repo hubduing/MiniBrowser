@@ -1,4 +1,5 @@
 using System.IO;
+using System.Windows.Data;
 using MiniBrowser.Services;
 using MiniBrowser.ViewModels;
 using Xunit;
@@ -83,10 +84,13 @@ public class MenuDrawerViewModelTests : IDisposable
     [InlineData(4, "4 визита")]
     [InlineData(5, "5 визитов")]
     [InlineData(11, "11 визитов")]
+    [InlineData(12, "12 визитов")]
+    [InlineData(13, "13 визитов")]
     [InlineData(14, "14 визитов")]
     [InlineData(21, "21 визит")]
     [InlineData(22, "22 визита")]
     [InlineData(25, "25 визитов")]
+    [InlineData(101, "101 визит")]
     [InlineData(111, "111 визитов")]
     [InlineData(112, "112 визитов")]
     [InlineData(121, "121 визит")]
@@ -114,34 +118,113 @@ public class MenuDrawerViewModelTests : IDisposable
         _storage.AddBookmark("https://weather.example/", "Погода");
         _vm.RefreshBookmarks();
 
+        // Коллекция — всегда полные данные, отбор виден только через представление.
         _vm.SearchText = "новости";
-        Assert.Single(_vm.Bookmarks);
-        Assert.Equal("https://news.example/", _vm.Bookmarks[0].Url);
+        Assert.Equal(2, _vm.Bookmarks.Count);
+        Assert.Equal(1, VisibleBookmarks());
         Assert.Equal("1 из 2", _vm.BookmarksCountText);
+        Assert.True(_vm.IsSearching);
+        Assert.True(_vm.HasBookmarks);
+        Assert.False(_vm.BookmarksNoResults);
 
         // Поиск нечувствителен к регистру и смотрит в URL тоже.
         _vm.SearchText = "WEATHER";
-        Assert.Single(_vm.Bookmarks);
+        Assert.Equal(1, VisibleBookmarks());
 
         _vm.SearchText = string.Empty;
-        Assert.Equal(2, _vm.Bookmarks.Count);
+        Assert.Equal(2, VisibleBookmarks());
         Assert.Equal("2", _vm.BookmarksCountText);
+        Assert.False(_vm.IsSearching);
+    }
+
+    [Fact]
+    public void SearchText_FilterLivesOnView_RemovingItShowsAll()
+    {
+        _storage.AddBookmark("https://news.example/", "Новости");
+        _storage.AddBookmark("https://weather.example/", "Погода");
+        _vm.RefreshBookmarks();
+        _vm.SearchText = "новости";
+
+        var view = CollectionViewSource.GetDefaultView(_vm.Bookmarks);
+        Assert.NotNull(view.Filter);
+        Assert.Single(view.Cast<object>());
+
+        // Без фильтра представление показывает всё: механизм поиска — именно Filter,
+        // а не предфильтр коллекции (коллекция всё время хранит оба элемента).
+        view.Filter = null;
+        view.Refresh();
+        Assert.Equal(2, view.Cast<object>().Count());
+    }
+
+    [Fact]
+    public void SearchText_FilterLivesOnHistoryView()
+    {
+        _storage.AddHistory("https://news.example/", "Новости дня");
+        _storage.AddHistory("https://other.example/", "Другое");
+        _vm.RefreshHistory();
+        _vm.SearchText = "новости";
+
+        var view = CollectionViewSource.GetDefaultView(_vm.History);
+        Assert.NotNull(view.Filter);
+        Assert.Single(view.Cast<object>());
+        Assert.Equal("1 из 2", _vm.HistoryCountText);
+    }
+
+    [Fact]
+    public void SearchText_WhitespaceOnly_TreatedAsNoSearch()
+    {
+        _storage.AddBookmark("https://a.example/", "Альфа");
+        _storage.AddBookmark("https://b.example/", "Бета");
+        _vm.RefreshBookmarks();
+
+        _vm.SearchText = "   ";
+        Assert.False(_vm.IsSearching);
+        Assert.Equal(2, VisibleBookmarks());
+        Assert.Equal("2", _vm.BookmarksCountText);
+        Assert.False(_vm.BookmarksNoResults);
+    }
+
+    [Fact]
+    public void SearchText_NoMatches_SetsNoResultsButKeepsHas()
+    {
+        _storage.AddBookmark("https://a.example/", "Альфа");
+        _vm.RefreshBookmarks();
+
+        _vm.SearchText = "такого нет";
+        Assert.True(_vm.IsSearching);
+        Assert.True(_vm.HasBookmarks);
+        Assert.True(_vm.BookmarksNoResults);
+        Assert.Equal("0 из 1", _vm.BookmarksCountText);
+    }
+
+    [Fact]
+    public void EmptyLists_HaveNoResultsFalse()
+    {
+        Assert.False(_vm.HasBookmarks);
+        Assert.False(_vm.HasHistory);
+        Assert.False(_vm.IsSearching);
+        Assert.False(_vm.BookmarksNoResults);
+        Assert.False(_vm.HistoryNoResults);
+        Assert.Equal("0", _vm.BookmarksCountText);
+        Assert.Equal("0", _vm.HistoryCountText);
     }
 
     [Fact]
     public void ClearSearchCommand_ResetsSearchText()
     {
         _storage.AddBookmark("https://a.example/", "Альфа");
+        _storage.AddBookmark("https://b.example/", "Бета");
         _vm.RefreshBookmarks();
         _vm.SearchText = "альфа";
-        Assert.Single(_vm.Bookmarks);
+        Assert.Equal(1, VisibleBookmarks());
         _vm.ClearSearchCommand.Execute(null);
         Assert.Equal(string.Empty, _vm.SearchText);
-        Assert.Single(_vm.Bookmarks);
+        Assert.Equal(2, VisibleBookmarks());
+        Assert.False(_vm.IsSearching);
     }
 
     [Fact]
-    public void RefreshHistory_DedupesAndSearchesViaService()
+    public void RefreshHistory_DedupesAndCountsWithoutSearch()
     {
         _storage.AddHistory("https://news.example/", "Новости дня");
         _storage.AddHistory("https://news.example/", "Новости дня");
@@ -149,13 +232,27 @@ public class MenuDrawerViewModelTests : IDisposable
         _vm.RefreshHistory();
         Assert.Equal(2, _vm.History.Count);
         Assert.Equal("2", _vm.HistoryCountText);
-
-        // LIKE в SQLite нечувствителен к регистру только для ASCII,
-        // поэтому ищем по URL латиницей: кириллицу в другом регистре сервис не найдёт.
-        _vm.SearchText = "other";
-        Assert.Single(_vm.History);
-        Assert.Equal("1 из 2", _vm.HistoryCountText);
         Assert.True(_vm.HasHistory);
+    }
+
+    [Fact]
+    public void SearchText_FindsCyrillicHistoryCaseInsensitively()
+    {
+        // Тот же запрос, что у закладок: «новости» находит «Новости дня».
+        // Через SQLite LIKE это не работало (регистр складывается только для ASCII),
+        // поэтому история фильтруется VM-предикатом, как и закладки.
+        _storage.AddHistory("https://news.example/", "Новости дня");
+        _storage.AddHistory("https://other.example/", "Другое");
+        _vm.RefreshHistory();
+
+        _vm.SearchText = "новости";
+        Assert.Equal(2, _vm.History.Count);
+        Assert.Equal(1, VisibleHistory());
+        Assert.Equal("1 из 2", _vm.HistoryCountText);
+
+        // Обратное направление: запрос капсом находит строчный заголовок.
+        _vm.SearchText = "НОВОСТИ";
+        Assert.Equal(1, VisibleHistory());
     }
 
     [Fact]
@@ -172,6 +269,20 @@ public class MenuDrawerViewModelTests : IDisposable
         Assert.DoesNotContain(_vm.Bookmarks, b => b.Url == item.Url);
         Assert.DoesNotContain(_storage.GetAllBookmarks(), b => b.Url == item.Url);
         Assert.Equal("1", _vm.BookmarksCountText);
+    }
+
+    [Fact]
+    public void DeleteItemCommand_WhileSearching_UpdatesViewAndCounter()
+    {
+        _storage.AddBookmark("https://a.example/", "A");
+        _storage.AddBookmark("https://b.example/", "B");
+        _vm.RefreshBookmarks();
+        _vm.SearchText = "example";
+        Assert.Equal("2 из 2", _vm.BookmarksCountText);
+
+        _vm.DeleteItemCommand.Execute(_vm.Bookmarks[0]);
+        Assert.Equal(1, VisibleBookmarks());
+        Assert.Equal("1 из 1", _vm.BookmarksCountText);
     }
 
     [Fact]
@@ -196,6 +307,28 @@ public class MenuDrawerViewModelTests : IDisposable
         Assert.Empty(_vm.History);
         Assert.False(_vm.HasHistory);
         Assert.Equal("0", _vm.HistoryCountText);
+        Assert.Equal(1, raised);
+    }
+
+    [Fact]
+    public void ClearHistoryCommand_WhileSearching_ResetsSearch()
+    {
+        _storage.AddHistory("https://other.example/", "Other");
+        _storage.AddBookmark("https://other.example/", "Other");
+        _vm.RefreshBookmarks();
+        _vm.RefreshHistory();
+        _vm.SearchText = "other";
+        Assert.Equal("1 из 1", _vm.HistoryCountText);
+
+        var raised = 0;
+        _vm.HistoryChanged += () => raised++;
+        _vm.ClearHistoryCommand.Execute(null);
+
+        Assert.Equal(string.Empty, _vm.SearchText);
+        Assert.False(_vm.IsSearching);
+        Assert.Empty(_vm.History);
+        Assert.Equal("0", _vm.HistoryCountText);
+        Assert.False(_vm.HistoryNoResults);
         Assert.Equal(1, raised);
     }
 
@@ -233,6 +366,29 @@ public class MenuDrawerViewModelTests : IDisposable
         Assert.Equal(1, raised);
     }
 
+    [Theory]
+    [InlineData("-100,-50")]
+    [InlineData("0,640")]
+    [InlineData("NaN,640")]
+    [InlineData("1024,NaN")]
+    [InlineData("Infinity,640")]
+    [InlineData("1024,Infinity")]
+    [InlineData("-Infinity,640")]
+    [InlineData("")]
+    [InlineData("1024,640,100")]
+    [InlineData("1024")]
+    public void SetWindowSizeCommand_InvalidValues_IgnoredWithoutEvent(string parameter)
+    {
+        var raised = 0;
+        _vm.SettingsChanged += () => raised++;
+        var width = _settings.Current.WindowWidth;
+        var height = _settings.Current.WindowHeight;
+        _vm.SetWindowSizeCommand.Execute(parameter);
+        Assert.Equal(width, _settings.Current.WindowWidth);
+        Assert.Equal(height, _settings.Current.WindowHeight);
+        Assert.Equal(0, raised);
+    }
+
     [Fact]
     public void ResetSettingsCommand_RestoresDefaultsAndRaisesEvent()
     {
@@ -249,4 +405,43 @@ public class MenuDrawerViewModelTests : IDisposable
     {
         Assert.Equal(NavigationService.EngineNames, _vm.SearchEngines);
     }
+
+    [Fact]
+    public void UnavailableDatabase_ViewModelOpensWithEmptyLists()
+    {
+        // Путь внутри существующего файла: SQLite не откроет БД,
+        // StorageService деградирует в IsAvailable == false вместо исключения.
+        var blocker = Path.Combine(Path.GetTempPath(), "mb-vm-blocker-" + Guid.NewGuid().ToString("N") + ".db");
+        File.WriteAllText(blocker, "not a database");
+        try
+        {
+            using var broken = new StorageService(Path.Combine(blocker, "nested.db"));
+            Assert.False(broken.IsAvailable);
+
+            // Панель обязана открыться с пустыми списками, а не упасть в конструкторе.
+            var vm = new MenuDrawerViewModel(broken, _settings);
+            Assert.Empty(vm.Bookmarks);
+            Assert.Empty(vm.History);
+            Assert.Equal("0", vm.BookmarksCountText);
+            Assert.Equal("0", vm.HistoryCountText);
+
+            // И команды не должны прокидывать исключения в UI-поток.
+            vm.SearchText = "что угодно";
+            vm.RefreshBookmarks();
+            vm.RefreshHistory();
+            vm.DeleteItemCommand.Execute(new BookmarkItem("https://a.example/", "A"));
+            vm.ClearHistoryCommand.Execute(null);
+            vm.ClearSearchCommand.Execute(null);
+        }
+        finally
+        {
+            if (File.Exists(blocker)) File.Delete(blocker);
+        }
+    }
+
+    private int VisibleBookmarks() =>
+        CollectionViewSource.GetDefaultView(_vm.Bookmarks).Cast<object>().Count();
+
+    private int VisibleHistory() =>
+        CollectionViewSource.GetDefaultView(_vm.History).Cast<object>().Count();
 }
