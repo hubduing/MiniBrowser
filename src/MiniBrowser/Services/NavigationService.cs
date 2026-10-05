@@ -46,7 +46,11 @@ public static class NavigationService
         if (!searchTemplate.Contains("{0}", StringComparison.Ordinal))
             return searchTemplate + Uri.EscapeDataString(input);
 
-        return string.Format(searchTemplate, Uri.EscapeDataString(input));
+        // Подстановка через Replace, а не string.Format: шаблон приходит из поля
+        // настроек, и любая лишняя скобка (например "{1}") роняла бы адресную строку
+        // с FormatException, а из async void-обработчика старта — всё приложение.
+        // Неизвестные скобки просто остаются в URL как есть.
+        return searchTemplate.Replace("{0}", Uri.EscapeDataString(input), StringComparison.Ordinal);
     }
 
     private static bool LooksLikeUrl(string s)

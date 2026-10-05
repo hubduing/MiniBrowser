@@ -24,19 +24,21 @@ public class NavigationServiceTests
     }
 
     [Theory]
-    [InlineData("Google", "https://www.google.com/search?q=")]
-    [InlineData("Bing", "https://www.bing.com/search?q=")]
-    [InlineData("DuckDuckGo", "https://duckduckgo.com/?q=")]
-    [InlineData("Яндекс", "https://yandex.ru/search/?text=")]
-    public void BuildUrl_Query_UsesGivenEngine(string engine, string expectedPrefix)
+    [InlineData("Google", "https://www.google.com/search?q=%D0%BA%D0%BE%D1%82%D1%8B")]
+    [InlineData("Bing", "https://www.bing.com/search?q=%D0%BA%D0%BE%D1%82%D1%8B")]
+    [InlineData("DuckDuckGo", "https://duckduckgo.com/?q=%D0%BA%D0%BE%D1%82%D1%8B")]
+    [InlineData("Яндекс", "https://yandex.ru/search/?text=%D0%BA%D0%BE%D1%82%D1%8B")]
+    public void BuildUrl_Query_UsesGivenEngine(string engine, string expectedUrl)
     {
-        Assert.StartsWith(expectedPrefix, NavigationService.BuildUrl("коты", NavigationService.SearchEngine(engine)));
+        // Кириллический запрос — самый частый случай: проверяем не только префикс,
+        // но и экранирование целиком.
+        Assert.Equal(expectedUrl, NavigationService.BuildUrl("коты", NavigationService.SearchEngine(engine)));
     }
 
     [Fact]
     public void SearchEngine_UnknownName_FallsBackToGoogle()
     {
-        Assert.Equal(NavigationService.SearchEngine("Google"), NavigationService.SearchEngine("Что-то"));
+        Assert.Equal(NavigationService.SearchUrlTemplate, NavigationService.SearchEngine("Что-то"));
     }
 
     [Fact]
@@ -53,5 +55,24 @@ public class NavigationServiceTests
         // а подставляем запрос в конец.
         var result = NavigationService.BuildUrl("a b", "https://s.example/?");
         Assert.Equal("https://s.example/?a%20b", result);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(null)]
+    public void BuildUrl_EmptyOrNullTemplate_FallsBackToDefault(string? template)
+    {
+        // Пустое поле настроек не должно ломать адресную строку — ищем по Google.
+        Assert.Equal("https://www.google.com/search?q=%D0%BA%D0%BE%D1%82%D1%8B",
+            NavigationService.BuildUrl("коты", template!));
+    }
+
+    [Fact]
+    public void BuildUrl_TemplateWithExtraBraces_DoesNotThrow()
+    {
+        // Лишняя скобка в ручной правке настроек — не повод ронять ввод:
+        // меняем только {0}, остальное оставляем как есть.
+        var result = NavigationService.BuildUrl("a b", "https://s.example/?q={0}&x={1}");
+        Assert.Equal("https://s.example/?q=a%20b&x={1}", result);
     }
 }
