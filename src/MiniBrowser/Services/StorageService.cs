@@ -15,19 +15,24 @@ public sealed class StorageService : IDisposable
 
     public bool IsAvailable => _connection is not null;
 
-    public StorageService()
+    public StorageService(string? databasePath = null)
     {
         try
         {
-            var dir = Path.Combine(
+            // Путь по умолчанию — локальный профиль; тесты подсовывают временный файл.
+            var dbPath = databasePath ?? Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "MiniBrowser");
-            Directory.CreateDirectory(dir);
+                "MiniBrowser",
+                "browser.db");
+            Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
 
             var connectionString = new SqliteConnectionStringBuilder
             {
-                DataSource = Path.Combine(dir, "browser.db"),
+                DataSource = dbPath,
                 Mode = SqliteOpenMode.ReadWriteCreate,
+                // Без пула: сервис держит одно соединение на всю жизнь, а пул после Dispose
+                // оставлял бы lock на файле — временные БД тестов тогда не удаляются.
+                Pooling = false,
             }.ToString();
 
             _connection = new SqliteConnection(connectionString);
@@ -79,6 +84,42 @@ public sealed class StorageService : IDisposable
         catch { }
     }
 
+    public List<Bookmark> GetAllBookmarks()
+    {
+        var result = new List<Bookmark>();
+        if (_connection is null) return result;
+        try
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "SELECT url, title FROM bookmarks ORDER BY added_at DESC;";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+                result.Add(new Bookmark(reader.GetString(0), reader.GetString(1)));
+        }
+        catch { }
+        return result;
+    }
+
+    public void DeleteBookmark(string url)
+    {
+        if (_connection is null || string.IsNullOrWhiteSpace(url)) return;
+        try
+        {
+            Exec("DELETE FROM bookmarks WHERE url = $u;", ("$u", url));
+        }
+        catch { }
+    }
+
+    public void ClearHistory()
+    {
+        if (_connection is null) return;
+        try
+        {
+            Exec("DELETE FROM history;");
+        }
+        catch { }
+    }
+
     public List<Bookmark> GetBookmarks(int limit = 12)
     {
         var result = new List<Bookmark>();
@@ -95,6 +136,15 @@ public sealed class StorageService : IDisposable
         return result;
     }
 
+    public List<HistoryEntry> GetHistory(int limit = 200) => QueryHistory(null, limit);
+
+    public List<HistoryEntry> SearchHistory(string query, int limit = 200)
+    {
+        // Пустой запрос — то же, что без фильтра: пользователь просто листает всё.
+        if (string.IsNullOrEmpty(query)) return QueryHistory(null, limit);
+        return QueryHistory($"%{EscapeLike(query)}%", limit);
+    }
+
     public List<HistoryEntry> GetRecentHistory(int limit = 12)
     {
         var result = new List<HistoryEntry>();
@@ -105,7 +155,56 @@ public sealed class StorageService : IDisposable
             cmd.CommandText = $"SELECT url, title, visited_at FROM history ORDER BY id DESC LIMIT {Clamp(limit)};";
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
-                result.Add(new HistoryEntry(reader.GetString(0), reader.GetString(1), reader.GetString(2)));
+            {
+                // LastVisit дублирует прочитанную строку — панели нужна дата даже в старом меню.
+                var visitedAt = reader.GetString(2);
+                result.Add(new HistoryEntry(reader.GetString(0), reader.GetString(1), visitedAt)
+                {
+                    LastVisit = visitedAt,
+                });
+            }
+        }
+        catch { }
+        return result;
+    }
+
+    private List<HistoryEntry> QueryHistory(string? pattern, int limit)
+    {
+        var result = new List<HistoryEntry>();
+        if (_connection is null) return result;
+        try
+        {
+            using var cmd = _connection.CreateCommand();
+            // Общий запрос для GetHistory и SearchHistory — разница лишь в наличии WHERE.
+            // Дедуп по URL: COUNT(*) — счётчик визитов, MAX(visited_at) — дата последнего.
+            // Заголовок — подзапросом из самой свежей строки URL: MAX(title) дал бы
+            // алфавитный максимум, не связанный с последним посещением.
+            // ESCAPE '\' вместе с экранированием в C#: запрос "100%" ищется буквально.
+            cmd.CommandText =
+                "SELECT url, " +
+                "MAX(visited_at) AS last_visit, " +
+                "COUNT(*) AS visit_count, " +
+                "(SELECT h2.title FROM history h2 WHERE h2.url = history.url " +
+                "ORDER BY h2.id DESC LIMIT 1) AS title " +
+                "FROM history " +
+                (pattern is null ? "" : "WHERE (url LIKE $q ESCAPE '\\' OR title LIKE $q ESCAPE '\\') ") +
+                "GROUP BY url " +
+                "ORDER BY last_visit DESC " +
+                "LIMIT $limit;";
+            if (pattern is not null)
+                cmd.Parameters.AddWithValue("$q", pattern);
+            // Лимит — параметром, а не склейкой; потолок 500: панели нужен запас сверх сотни.
+            cmd.Parameters.AddWithValue("$limit", Clamp(limit, 500));
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                var lastVisit = reader.GetString(1);
+                result.Add(new HistoryEntry(reader.GetString(0), reader.GetString(3), lastVisit)
+                {
+                    VisitCount = reader.GetInt32(2),
+                    LastVisit = lastVisit,
+                });
+            }
         }
         catch { }
         return result;
@@ -123,6 +222,12 @@ public sealed class StorageService : IDisposable
     }
 
     private static int Clamp(int limit) => Math.Clamp(limit, 1, 100);
+
+    private static int Clamp(int limit, int max) => Math.Clamp(limit, 1, max);
+
+    // Экранирование спецсимволов LIKE: сначала бэкслэш, иначе он повредит уже вставленные префиксы.
+    private static string EscapeLike(string value) =>
+        value.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
 
     private static string Trim(string value, int max) =>
         string.IsNullOrEmpty(value) ? "" : (value.Length <= max ? value : value[..max]);
