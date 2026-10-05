@@ -108,6 +108,12 @@ public sealed class MenuDrawerViewModel : INotifyPropertyChanged
     /// <summary>Источник для ComboBox поисковой системы.</summary>
     public string[] SearchEngines => NavigationService.EngineNames;
 
+    /// <summary>Настройки для привязки полей вкладки «Настройки» (Settings.Current.*).</summary>
+    public SettingsService Settings => _settings;
+
+    /// <summary>Разметка зовёт после записи в Settings.Current из code-behind (ComboBox через Tag).</summary>
+    public void NotifySettingsChanged() => SettingsChanged?.Invoke();
+
     /// <summary>Поиск активен: эффективный запрос не пуст (пробелы не считаются).</summary>
     public bool IsSearching => _searchText.Trim().Length > 0;
 

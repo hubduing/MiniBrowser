@@ -1,0 +1,166 @@
+using System.Globalization;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using MiniBrowser.Services;
+using MiniBrowser.ViewModels;
+
+namespace MiniBrowser.Views;
+
+/// <summary>
+/// Выезжающая слева панель: закладки, история, настройки. Разметка знает только события
+/// и метод SetOpen; за навигацию и хранение отвечает хост через VM и подписки.
+/// </summary>
+public partial class MenuDrawerView : UserControl
+{
+    // Закрытая панель стоит ровно за левым краем: стартовый X равен её ширине.
+    private const double ClosedX = -360;
+    private static readonly Duration SlideDuration = new(TimeSpan.FromMilliseconds(180));
+
+    // Синхронизация ComboBox поднимает их же SelectionChanged: флаг гасит эхо.
+    private bool _syncingCombos;
+    private MenuDrawerViewModel? _trackedVm;
+
+    /// <summary>Затемнение, ✕ и Esc: хост скрывает панель.</summary>
+    public event Action? CloseRequested;
+
+    /// <summary>Двойной клик по строке: дублирует NavigateRequested VM, чтобы разметка не знала о VM.</summary>
+    public event Action<string>? OpenUrlRequested;
+
+    public bool IsDrawerOpen { get; private set; }
+
+    public MenuDrawerView()
+    {
+        InitializeComponent();
+        Loaded += (_, _) => SyncCombos();
+        DataContextChanged += OnDataContextChanged;
+    }
+
+    /// <summary>Единственный метод открытия: ставит флаг и гонит слайд панели и opacity затемнения.</summary>
+    public void SetOpen(bool open)
+    {
+        IsDrawerOpen = open;
+        // Открытие до первой отрисовки: без принудительной раскладки анимации не с чего стартовать.
+        if (open && !Panel.IsLoaded) UpdateLayout();
+        if (open)
+        {
+            Visibility = Visibility.Visible;
+            IsHitTestVisible = true;
+        }
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var slide = new DoubleAnimation(open ? 0 : ClosedX, SlideDuration) { EasingFunction = ease };
+        if (!open)
+            // Скрываем из hit-test только по окончании: Collapsed сразу убил бы саму анимацию закрытия.
+            // Флаг перепроверяем — панель могли успеть открыть заново за 180 мс.
+            slide.Completed += (_, _) =>
+            {
+                if (!IsDrawerOpen)
+                {
+                    Visibility = Visibility.Collapsed;
+                    IsHitTestVisible = false;
+                }
+            };
+        Slide.BeginAnimation(TranslateTransform.XProperty, slide);
+        var dim = new DoubleAnimation(open ? 1 : 0, SlideDuration) { EasingFunction = ease };
+        Dim.BeginAnimation(OpacityProperty, dim);
+        if (open) SyncCombos();
+    }
+
+    /// <summary>0 — закладки, 1 — история, 2 — настройки. Хост зовёт из ShowBookmarks/ShowHistory.</summary>
+    public void SelectTab(int index) => Tabs.SelectedIndex = Math.Clamp(index, 0, 2);
+
+    private void Panel_Close_Click(object sender, RoutedEventArgs e) => CloseRequested?.Invoke();
+
+    private void Dim_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) => CloseRequested?.Invoke();
+
+    private void Drawer_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            CloseRequested?.Invoke();
+            e.Handled = true;
+        }
+    }
+
+    private void List_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        // Двойной клик, а не одиночный: одиночный нужен для выделения строки и кнопки удаления.
+        if (sender is ListBox list && list.SelectedItem is MenuItemBase item)
+            OpenUrlRequested?.Invoke(item.Url);
+    }
+
+    private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        // Сброс настроек меняет Current молча (AppSettings без уведомлений):
+        // пересинхронизируем ComboBox вслед за событием VM, не забывая отписаться от старой.
+        if (_trackedVm is not null) _trackedVm.SettingsChanged -= OnVmSettingsChanged;
+        _trackedVm = e.NewValue as MenuDrawerViewModel;
+        if (_trackedVm is not null) _trackedVm.SettingsChanged += OnVmSettingsChanged;
+        SyncCombos();
+    }
+
+    private void OnVmSettingsChanged() => SyncCombos();
+
+    /// <summary>
+    /// Начальный выбор обоих ComboBox выставляем кодом: привязка SelectedValue к double
+    /// (шрифт) и перевод имени движка в URL-шаблон без конвертера невозможны.
+    /// </summary>
+    private void SyncCombos()
+    {
+        var vm = DataContext as MenuDrawerViewModel;
+        if (vm is null) return;
+        _syncingCombos = true;
+        try
+        {
+            FontSizeBox.SelectedItem = null;
+            foreach (var raw in FontSizeBox.Items)
+                if (raw is ComboBoxItem { Tag: string tag }
+                    && double.TryParse(tag, NumberStyles.Float, CultureInfo.InvariantCulture, out var size)
+                    && size == vm.Settings.Current.DefaultFontSize)
+                {
+                    FontSizeBox.SelectedItem = raw;
+                    break;
+                }
+            // Имя движка восстанавливаем обратным проходом по известным шаблонам;
+            // ручная правка конфига даст чужой URL — тогда выбора нет, и это честно.
+            EngineBox.SelectedItem = null;
+            foreach (var name in vm.SearchEngines)
+                if (NavigationService.SearchEngine(name) == vm.Settings.Current.SearchUrl)
+                {
+                    EngineBox.SelectedItem = name;
+                    break;
+                }
+        }
+        finally
+        {
+            _syncingCombos = false;
+        }
+    }
+
+    private void FontSizeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_syncingCombos) return;
+        var vm = DataContext as MenuDrawerViewModel;
+        if (vm is null) return;
+        if (FontSizeBox.SelectedItem is ComboBoxItem { Tag: string tag }
+            && double.TryParse(tag, NumberStyles.Float, CultureInfo.InvariantCulture, out var size))
+        {
+            vm.Settings.Current.DefaultFontSize = size;
+            vm.NotifySettingsChanged();
+        }
+    }
+
+    private void EngineBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_syncingCombos) return;
+        var vm = DataContext as MenuDrawerViewModel;
+        if (vm is null) return;
+        if (EngineBox.SelectedItem is string name)
+        {
+            vm.Settings.Current.SearchUrl = NavigationService.SearchEngine(name);
+            vm.NotifySettingsChanged();
+        }
+    }
+}
