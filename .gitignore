@@ -6,3 +6,6 @@ publish/
 *.log
 build.txt
 screenshot*.png
+test_*.png
+.worktrees/
+.superpowers/
