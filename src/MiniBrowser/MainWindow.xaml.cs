@@ -15,6 +15,19 @@ public partial class MainWindow : Window, IBrowserActions
     private readonly string[] _startupUrls;
     private Tab? _titleTab;
     private bool _started;
+    // Полноэкранный режим имеет два независимых источника:
+    //   _manualFullscreen — пользователь нажал F11;
+    //   _pageFullscreen  — страница (видео) ушла в HTML5-fullscreen.
+    // Окно без рамки нужно, если активен ЛИБО один, ЛИБО оба, иначе выход из
+    // видео выкинет пользователя из F11-режима и наоборот.
+    private bool _manualFullscreen;
+    private bool _pageFullscreen;
+    private WindowStyle _savedWindowStyle = WindowStyle.SingleBorderWindow;
+    private ResizeMode _savedResizeMode = ResizeMode.CanResize;
+    private WindowState _savedWindowState = WindowState.Normal;
+
+    /// <summary>Текущее состояние окна — вычисляется в ApplyFullscreen, копить нельзя.</summary>
+    private bool _isFullscreenApplied;
 
     public MainWindow(string[]? startupUrls = null)
     {
@@ -26,6 +39,7 @@ public partial class MainWindow : Window, IBrowserActions
         _tabManager.ActiveTabChanged += OnActiveTabChanged;
         _tabManager.StateChanged += _ => RefreshNavState();
         _tabManager.Navigated += OnNavigated;
+        _tabManager.ActiveViewFullscreenChanged += OnPageFullscreenChanged;
 
         TabStrip.Items = _tabManager.Tabs.ToList();
         TabStrip.TabActivated += t => _tabManager.ActivateTab(t);
@@ -219,6 +233,21 @@ public partial class MainWindow : Window, IBrowserActions
 
     void IBrowserActions.GoBack() => _tabManager.GoBackActive();
     void IBrowserActions.GoForward() => _tabManager.GoForwardActive();
+
+    void IBrowserActions.ToggleFullscreen()
+    {
+        _manualFullscreen = !_manualFullscreen;
+        ApplyFullscreen();
+    }
+
+    void IBrowserActions.ExitFullscreen()
+    {
+        _manualFullscreen = false;
+        ApplyFullscreen();
+    }
+
+    bool IBrowserActions.IsManualFullscreen => _manualFullscreen;
+
     void IBrowserActions.Reload() => _tabManager.ReloadActive();
 
     private void SwitchTab(int delta)
@@ -255,6 +284,52 @@ public partial class MainWindow : Window, IBrowserActions
         var dark = 1;
         if (DwmSetWindowAttribute(hwnd, 20, ref dark, sizeof(int)) != 0)
             DwmSetWindowAttribute(hwnd, 19, ref dark, sizeof(int));
+    }
+
+    /// <summary>Страница (видео) запросила или сняла HTML5-полноэкранный режим.</summary>
+    private void OnPageFullscreenChanged(bool isFullScreen)
+    {
+        _pageFullscreen = isFullScreen;
+        ApplyFullscreen();
+    }
+
+    /// <summary>
+    /// Окно уходит в полноэкранный режим, если активен хотя бы один из источников.
+    /// Состояние окна считается из флагов, а не накапливается — выход из одного
+    /// режима не должен ломать другой.
+    /// </summary>
+    private void ApplyFullscreen()
+    {
+        var fullscreen = _manualFullscreen || _pageFullscreen;
+        if (fullscreen == _isFullscreenApplied) return;
+        _isFullscreenApplied = fullscreen;
+
+        if (fullscreen)
+        {
+            // Запоминаем состояние окна только при реальном уходе в fullscreen,
+            // иначе повторные переключения перезапишут эталон.
+            _savedWindowStyle = WindowStyle;
+            _savedResizeMode = ResizeMode;
+            _savedWindowState = WindowState;
+
+            Toolbar.Visibility = Visibility.Collapsed;
+            TabStrip.Visibility = Visibility.Collapsed;
+            StatusText.Visibility = Visibility.Collapsed;
+
+            WindowStyle = WindowStyle.None;
+            ResizeMode = ResizeMode.NoResize;
+            WindowState = WindowState.Maximized;
+        }
+        else
+        {
+            Toolbar.Visibility = Visibility.Visible;
+            TabStrip.Visibility = Visibility.Visible;
+            StatusText.Visibility = Visibility.Visible;
+
+            WindowStyle = _savedWindowStyle;
+            ResizeMode = _savedResizeMode;
+            WindowState = _savedWindowState;
+        }
     }
 
     private void Window_KeyDown(object sender, KeyEventArgs e)

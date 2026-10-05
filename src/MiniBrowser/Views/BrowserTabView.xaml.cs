@@ -21,6 +21,9 @@ public partial class BrowserTabView : UserControl
     public event Action<Tab>? StateChanged;
     public event Action<Tab, string>? NewWindowRequested;
 
+    /// <summary>Страница (видео) вошла/вышла из HTML5-полноэкранного режима.</summary>
+    public event Action<Tab, bool>? FullscreenChanged;
+
     public BrowserTabView(Tab tab, IBrowserActions actions)
     {
         InitializeComponent();
@@ -30,6 +33,9 @@ public partial class BrowserTabView : UserControl
 
     /// <summary>true — движок WebView2 уже создан для этой вкладки.</summary>
     public bool HasEngine => _web is not null;
+
+    /// <summary>true — страница сейчас в HTML5-полноэкранном режиме.</summary>
+    public bool IsPageFullscreen { get; private set; }
 
     public bool CanGoBack => _web?.CoreWebView2?.CanGoBack == true;
     public bool CanGoForward => _web?.CoreWebView2?.CanGoForward == true;
@@ -85,6 +91,8 @@ public partial class BrowserTabView : UserControl
 
         _web = null;
         _tab.IsAsleep = true;
+        // Движок уничтожен — полноэкранного элемента больше не существует.
+        IsPageFullscreen = false;
         ShowOverlay("Вкладка приостановлена — память освобождена");
     }
 
@@ -166,6 +174,15 @@ public partial class BrowserTabView : UserControl
         {
             e.Handled = true; // новые окна открываем своими вкладками
             NewWindowRequested?.Invoke(_tab, e.Uri);
+        };
+
+        // Страница ушла в HTML5-fullscreen (видео). WebView2 сам размер не меняет —
+        // растягивается лишь область WebView2. Сообщаем хосту, чтобы он убрал chrome.
+        core.ContainsFullScreenElementChanged += (_, _) =>
+        {
+            var fullscreen = core.ContainsFullScreenElement;
+            IsPageFullscreen = fullscreen;
+            if (_tab.IsActive) FullscreenChanged?.Invoke(_tab, fullscreen);
         };
     }
 

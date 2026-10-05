@@ -14,6 +14,11 @@ public interface IBrowserActions
     void GoBack();
     void GoForward();
     void Reload();
+    void ToggleFullscreen();
+    void ExitFullscreen();
+
+    /// <summary>true — пользователь включил F11-режим (не HTML5-полноэкранный).</summary>
+    bool IsManualFullscreen { get; }
 }
 
 /// <summary>Горячие клавиши браузера.</summary>
@@ -43,6 +48,21 @@ public static class Hotkeys
                 if (key == Key.Left) { actions.GoBack(); return true; }
                 if (key == Key.Right) { actions.GoForward(); return true; }
                 break;
+        }
+
+        if (key == Key.F11)
+        {
+            actions.ToggleFullscreen();
+            return true;
+        }
+
+        // Esc: выход из F11-полноэкранного режима. Из HTML5-полноэкранного
+        // режима страницу выкидывает сам движок, поэтому Esc обязан дойти до
+        // страницы — перехватываем его только в ручном режиме.
+        if (key == Key.Escape && modifiers == ModifierKeys.None && actions.IsManualFullscreen)
+        {
+            actions.ExitFullscreen();
+            return true;
         }
 
         return false;

@@ -20,6 +20,9 @@ public sealed class TabManager
     public event Action<Tab, string>? Navigated;
     public event Action<Tab>? StateChanged;
 
+    /// <summary>Активная вкладка: страница вошла/вышла из HTML5-полноэкранного режима.</summary>
+    public event Action<bool>? ActiveViewFullscreenChanged;
+
     public IReadOnlyList<Tab> Tabs => _tabs;
     public Tab? ActiveTab { get; private set; }
 
@@ -43,6 +46,12 @@ public sealed class TabManager
         view.Navigated += HandleNavigated;
         view.StateChanged += t => StateChanged?.Invoke(t);
         view.NewWindowRequested += (_, newUrl) => NewTab(newUrl);
+        view.FullscreenChanged += (_, isFullscreen) =>
+        {
+            // Реакция только на активную вкладку: полноэкранный фон в спящей
+            // вкладке не должен дёргать окно.
+            if (tab.IsActive) ActiveViewFullscreenChanged?.Invoke(isFullscreen);
+        };
 
         _views[tab] = view;
         _tabs.Add(tab);
@@ -80,6 +89,11 @@ public sealed class TabManager
 
         ActiveTab = tab;
         ActiveTabChanged?.Invoke(tab);
+
+        // Панели скрыты, вкладки переключаются только хоткеями — сообщаем хосту
+        // реальное состояние новой активной вкладки, иначе окно осталось бы
+        // без рамки из-за полноэкранного видео на покинутой вкладке.
+        ActiveViewFullscreenChanged?.Invoke(_views[tab].IsPageFullscreen);
     }
 
     public void CloseTab(Tab tab)

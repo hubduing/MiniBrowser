@@ -19,8 +19,8 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <views:ToolbarView x:Name="Toolbar" Grid.Row="0"/>
-        <views:TabStripView x:Name="TabStrip" Grid.Row="1"/>
+        <views:TabStripView x:Name="TabStrip" Grid.Row="0"/>
+        <views:ToolbarView x:Name="Toolbar" Grid.Row="1"/>
 
         <!-- Контейнер содержимого: по одному BrowserTabView на вкладку -->
         <Grid x:Name="ContentHost" Grid.Row="2" Background="{StaticResource B.Content}"/>
