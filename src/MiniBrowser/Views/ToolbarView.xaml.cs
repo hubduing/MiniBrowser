@@ -108,7 +108,7 @@ public partial class ToolbarView : UserControl
                 any = true;
                 var item = new MenuItem
                 {
-                    Header = itemTitle.Replace("_", "__"),
+                    Header = itemTitle,
                     Tag = url,
                     ToolTip = url,
                 };
