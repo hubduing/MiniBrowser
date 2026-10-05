@@ -46,19 +46,23 @@ public class SettingsServiceTests : IDisposable
         var first = new SettingsService(_path);
         first.Current.ZoomPercent = 175;
         first.Current.WindowWidth = 1600;
+        first.Current.WindowHeight = 900;
         first.Current.WindowMaximized = true;
         first.Current.ShowStatusBar = false;
         first.Current.DefaultFontSize = 20;
         first.Current.HomeUrl = "https://example.org/";
+        first.Current.SearchUrl = "https://example.org/search?q={0}";
         first.Save();
 
         var second = new SettingsService(_path);
         Assert.Equal(175, second.Current.ZoomPercent);
         Assert.Equal(1600, second.Current.WindowWidth);
+        Assert.Equal(900, second.Current.WindowHeight);
         Assert.True(second.Current.WindowMaximized);
         Assert.False(second.Current.ShowStatusBar);
         Assert.Equal(20, second.Current.DefaultFontSize);
         Assert.Equal("https://example.org/", second.Current.HomeUrl);
+        Assert.Equal("https://example.org/search?q={0}", second.Current.SearchUrl);
     }
 
     [Theory]
@@ -82,6 +86,19 @@ public class SettingsServiceTests : IDisposable
         File.WriteAllText(_path, $"{{ \"WindowWidth\": {written} }}");
         var service = new SettingsService(_path);
         Assert.Equal(expected, service.Current.WindowWidth);
+    }
+
+    [Fact]
+    public void Load_UnknownProperties_AreIgnoredAndMissingFieldsDefault()
+    {
+        // В файле может остаться мусор от будущих версий или ручных правок —
+        // разбор не должен падать, а отсутствующие поля берут значения по умолчанию.
+        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+        File.WriteAllText(_path, "{ \"ZoomPercent\": 150, \"SomeFutureOption\": true }");
+        var service = new SettingsService(_path);
+        Assert.Equal(150, service.Current.ZoomPercent);
+        Assert.Equal(1200, service.Current.WindowWidth);
+        Assert.Equal("https://www.google.com/", service.Current.HomeUrl);
     }
 
     [Fact]
@@ -113,10 +130,25 @@ public class SettingsServiceTests : IDisposable
     [Fact]
     public void ResetToDefaults_RestoresEveryValue()
     {
-        var settings = new AppSettings { ZoomPercent = 50, WindowWidth = 1024, HomeUrl = "https://x/" };
+        var settings = new AppSettings
+        {
+            ZoomPercent = 50,
+            WindowWidth = 1024,
+            WindowHeight = 600,
+            WindowMaximized = true,
+            HomeUrl = "https://x/",
+            SearchUrl = "https://y/{0}",
+            ShowStatusBar = false,
+            DefaultFontSize = 13,
+        };
         SettingsService.ResetToDefaults(settings);
         Assert.Equal(100, settings.ZoomPercent);
         Assert.Equal(1200, settings.WindowWidth);
+        Assert.Equal(800, settings.WindowHeight);
+        Assert.False(settings.WindowMaximized);
         Assert.Equal("https://www.google.com/", settings.HomeUrl);
+        Assert.Equal("https://www.google.com/search?q={0}", settings.SearchUrl);
+        Assert.True(settings.ShowStatusBar);
+        Assert.Equal(16, settings.DefaultFontSize);
     }
 }
