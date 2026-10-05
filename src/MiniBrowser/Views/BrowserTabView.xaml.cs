@@ -101,7 +101,12 @@ public partial class BrowserTabView : UserControl
 
         if (_web is null)
         {
-            _web = new WebView2 { Visibility = Visibility.Collapsed };
+            _web = new WebView2
+            {
+                Visibility = Visibility.Collapsed,
+                // Тёмный фон вместо белой вспышки при загрузке страниц
+                DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 0x1B, 0x1B, 0x1F),
+            };
         }
         if (!Host.Children.Contains(_web))
         {

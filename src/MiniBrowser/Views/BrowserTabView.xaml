@@ -5,15 +5,15 @@
         <!-- Здесь код-бэк подставляет WebView2 (лениво, при первой навигации) -->
         <Grid x:Name="Host"/>
 
-        <Border x:Name="Overlay" Background="#FAFAFA" Grid.ZIndex="1">
+        <Border x:Name="Overlay" Background="{StaticResource B.Content}" Grid.ZIndex="1">
             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                 <TextBlock Text="🌐" FontSize="52" HorizontalAlignment="Center"/>
                 <TextBlock x:Name="OverlayText"
                            Text="Новая вкладка"
-                           FontSize="16" Foreground="#444"
+                           FontSize="16" Foreground="{StaticResource T.Primary}"
                            Margin="0,14,0,0" HorizontalAlignment="Center"/>
                 <TextBlock Text="Введите адрес или запрос в адресной строке (Ctrl+L)"
-                           FontSize="12" Foreground="#888"
+                           FontSize="12" Foreground="{StaticResource T.Muted}"
                            Margin="0,6,0,0" HorizontalAlignment="Center"/>
             </StackPanel>
         </Border>

@@ -1,7 +1,8 @@
 <UserControl x:Class="MiniBrowser.Views.ToolbarView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Border Background="#F7F7F7" BorderBrush="#D0D0D0" BorderThickness="0,0,0,1" Padding="6,5">
+    <Border Background="{StaticResource B.Toolbar}" BorderBrush="{StaticResource B.Border}"
+            BorderThickness="0,0,0,1" Padding="8,6">
         <DockPanel LastChildFill="True">
 
             <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
@@ -28,9 +29,7 @@
 
             <TextBox x:Name="AddressBox"
                      Margin="10,0"
-                     Padding="8,4"
-                     FontSize="13"
-                     VerticalContentAlignment="Center"
+                     Style="{StaticResource AddressBox}"
                      GotKeyboardFocus="Address_GotKeyboardFocus"
                      LostKeyboardFocus="Address_LostKeyboardFocus"
                      KeyDown="Address_KeyDown"/>

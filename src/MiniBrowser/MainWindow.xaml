@@ -6,7 +6,9 @@
         Width="1200" Height="800"
         MinWidth="640" MinHeight="400"
         WindowStartupLocation="CenterScreen"
-        Background="White"
+        Icon="Assets/app.ico"
+        Background="{StaticResource B.Window}"
+        SourceInitialized="Window_SourceInitialized"
         KeyDown="Window_KeyDown"
         Closed="Window_Closed">
     <Grid>
@@ -21,11 +23,11 @@
         <views:TabStripView x:Name="TabStrip" Grid.Row="1"/>
 
         <!-- Контейнер содержимого: по одному BrowserTabView на вкладку -->
-        <Grid x:Name="ContentHost" Grid.Row="2" Background="White"/>
+        <Grid x:Name="ContentHost" Grid.Row="2" Background="{StaticResource B.Content}"/>
 
-        <Border Grid.Row="3" Background="#F0F0F0" BorderBrush="#D0D0D0"
-                BorderThickness="0,1,0,0" Padding="8,3">
-            <TextBlock x:Name="StatusText" Text="Готов" FontSize="11" Foreground="#555"/>
+        <Border Grid.Row="3" Background="{StaticResource B.Status}" BorderBrush="{StaticResource B.Border}"
+                BorderThickness="0,1,0,0" Padding="10,4">
+            <TextBlock x:Name="StatusText" Text="Готов" FontSize="11" Foreground="{StaticResource T.Muted}"/>
         </Border>
     </Grid>
 </Window>
