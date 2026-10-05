@@ -24,7 +24,9 @@ public sealed class StorageService : IDisposable
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "MiniBrowser",
                 "browser.db");
-            Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
+            // Папка есть не всегда (голая "browser.db" — файл в текущей папке),
+            // а врать оператором ! нельзя: иначе молча деградируем в IsAvailable == false.
+            if (Path.GetDirectoryName(dbPath) is { } dir) Directory.CreateDirectory(dir);
 
             var connectionString = new SqliteConnectionStringBuilder
             {

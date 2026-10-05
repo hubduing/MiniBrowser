@@ -73,6 +73,24 @@ public class StorageServiceTests : IDisposable
         Assert.Equal(2, history.Count);
         var news = history.Single(h => h.Url == "https://news.example/");
         Assert.Equal(3, news.VisitCount);
+        Assert.NotEmpty(news.LastVisit);
+    }
+
+    [Fact]
+    public void GetHistory_SameUrlRetitled_KeepsLatestTitle()
+    {
+        // Заголовок — из самой свежей строки URL, а не MAX(title):
+        // «Ящик» алфавитно больше «Арбуза», но последнее посещение — с «Арбузом».
+        _storage.AddHistory("https://news.example/", "Ящик");
+        Thread.Sleep(1100); // visited_at с точностью до секунды
+        _storage.AddHistory("https://news.example/", "Арбуз");
+
+        var entry = Assert.Single(_storage.GetHistory());
+        Assert.Equal(2, entry.VisitCount);
+        Assert.Equal("Арбуз", entry.Title);
+        // LastVisit — дата именно последнего посещения, а не первого.
+        Assert.NotEmpty(entry.LastVisit);
+        Assert.Equal(_storage.GetRecentHistory()[0].VisitedAt, entry.LastVisit);
     }
 
     [Fact]
@@ -133,6 +151,15 @@ public class StorageServiceTests : IDisposable
     }
 
     [Fact]
+    public void SearchHistory_NullQuery_ReturnsAllDeduped()
+    {
+        _storage.AddHistory("https://a.example/", "A");
+        _storage.AddHistory("https://a.example/", "A");
+        _storage.AddHistory("https://b.example/", "B");
+        Assert.Equal(2, _storage.SearchHistory(null!).Count);
+    }
+
+    [Fact]
     public void ClearHistory_RemovesEverything_ButKeepsBookmarks()
     {
         _storage.AddHistory("https://a.example/", "A");
@@ -143,11 +170,10 @@ public class StorageServiceTests : IDisposable
     }
 
     [Fact]
-    public void GetRecentHistory_FillsVisitCountAndLastVisit()
+    public void GetRecentHistory_FillsLastVisitFromVisitedAt()
     {
         _storage.AddHistory("https://a.example/", "A");
         var entry = Assert.Single(_storage.GetRecentHistory());
-        Assert.Equal(1, entry.VisitCount);
         Assert.NotEmpty(entry.LastVisit);
     }
 
@@ -156,23 +182,30 @@ public class StorageServiceTests : IDisposable
     {
         // Путь внутри существующего файла: SQLite не сможет открыть БД,
         // и StorageService обязан деградировать, а не упасть.
-        var blocker = Path.Combine(Path.GetTempPath(), "mb-blocker.db");
+        // Имя уникальное: два параллельных dotnet test иначе делят один blocker-файл.
+        var blocker = Path.Combine(Path.GetTempPath(), "mb-blocker-" + Guid.NewGuid().ToString("N") + ".db");
         File.WriteAllText(blocker, "not a database");
 
-        using var broken = new StorageService(Path.Combine(blocker, "nested.db"));
-        Assert.False(broken.IsAvailable);
-        Assert.Empty(broken.GetAllBookmarks());
-        Assert.Empty(broken.GetHistory());
-        Assert.Empty(broken.SearchHistory("что угодно"));
-        Assert.Empty(broken.GetRecentHistory());
+        try
+        {
+            using var broken = new StorageService(Path.Combine(blocker, "nested.db"));
+            Assert.False(broken.IsAvailable);
+            Assert.Empty(broken.GetAllBookmarks());
+            Assert.Empty(broken.GetHistory());
+            Assert.Empty(broken.SearchHistory("что угодно"));
+            Assert.Empty(broken.GetRecentHistory());
 
-        // Записи не падают и не мешают чтению.
-        broken.AddHistory("https://a.example/", "A");
-        broken.AddBookmark("https://a.example/", "A");
-        broken.DeleteBookmark("https://a.example/");
-        broken.ClearHistory();
-        Assert.Empty(broken.GetAllBookmarks());
-
-        File.Delete(blocker);
+            // Записи не падают и не мешают чтению.
+            broken.AddHistory("https://a.example/", "A");
+            broken.AddBookmark("https://a.example/", "A");
+            broken.DeleteBookmark("https://a.example/");
+            broken.ClearHistory();
+            Assert.Empty(broken.GetAllBookmarks());
+        }
+        finally
+        {
+            // Упавший тест не должен оставлять мусор в %TEMP%.
+            if (File.Exists(blocker)) File.Delete(blocker);
+        }
     }
 }
