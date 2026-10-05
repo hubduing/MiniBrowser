@@ -83,7 +83,12 @@ public partial class BrowserTabView : UserControl
     /// <summary>Применить множитель масштаба к движку (или запомнить до его создания).</summary>
     public void ApplyZoom(double zoom)
     {
-        if (_web is not null)
+        // Проверяем именно готовность ядра, а не факт создания контрола:
+        // между `new WebView2()` и концом `EnsureCoreWebView2Async` движка ещё
+        // нет, и ZoomChanged() в это окно обязан уйти в отложенное значение,
+        // а не в сеттер. Сам ZoomFactor берём у WPF-обёртки — в CoreWebView2
+        // этого свойства нет в интероп-сборках пакета.
+        if (_web?.CoreWebView2 is not null)
             _web.ZoomFactor = zoom;
         else
             _pendingZoom = zoom;
@@ -160,7 +165,11 @@ public partial class BrowserTabView : UserControl
         // Новая вкладка обязана открыться в текущем масштабе, а не в 100%:
         // отложенное значение (если ApplyZoom позвали до создания движка)
         // побеждает свежий замер провайдера.
-        ApplyZoom(_pendingZoom ?? _zoomProvider());
+        var zoom = _pendingZoom ?? _zoomProvider();
+        // Отложенное значение потреблено — поле обязано отражать реальность
+        // между созданием движка и сном, а не хранить вчерашний масштаб.
+        _pendingZoom = null;
+        ApplyZoom(zoom);
         WireEvents();
         return true;
     }
