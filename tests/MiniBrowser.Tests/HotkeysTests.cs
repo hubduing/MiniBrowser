@@ -51,12 +51,23 @@ public class HotkeysTests
     {
         var a = new FakeActions();
         Hotkeys.TryHandle(Key.H, ModifierKeys.Control, a);
-        Assert.Single(a.Calls);
+        // Именно ShowHistory, а не чужое действие: Assert.Single не поймал бы
+        // подмену одного вызова другим.
+        Assert.Equal(new[] { "ShowHistory" }, a.Calls);
     }
 
     [Fact] public void Escape_WhenMenuOpen_ClosesMenu()
     {
         var a = new FakeActions { IsMenuOpen = true };
+        Assert.True(Hotkeys.TryHandle(Key.Escape, ModifierKeys.None, a));
+        Assert.Equal(new[] { "ToggleMenu" }, a.Calls);
+    }
+
+    [Fact] public void Escape_WhenMenuOpenBeatsFullscreenExit()
+    {
+        // Панель открыта и одновременно включён F11: Esc обязан закрыть панель,
+        // а не выйти из полноэкранного режима — это ловит неверный порядок блоков.
+        var a = new FakeActions { IsMenuOpen = true, IsManualFullscreen = true };
         Assert.True(Hotkeys.TryHandle(Key.Escape, ModifierKeys.None, a));
         Assert.Equal(new[] { "ToggleMenu" }, a.Calls);
     }
