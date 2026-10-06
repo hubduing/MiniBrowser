@@ -99,14 +99,30 @@ public sealed class TabGroup : INotifyPropertyChanged
 
 ### `TabManager` — владелец групп
 
+Группы и порядок вкладок живут в отдельном классе `Services/TabGroups.cs` без
+зависимости от WPF: `TabManager` создаёт `BrowserTabView` (XAML, `StaticResource`
+из `App.xaml`), поэтому в тестах он не конструируется — тестируется `TabGroups`,
+а публичная поверхность `TabManager` остаётся такой же, как описано ниже.
+
+`TabGroups`:
+
 - `List<TabGroup> _groups`; публично `IReadOnlyList<TabGroup> Groups`;
 - `Tabs` (плоский, в порядке отображения) пересобирается при любом изменении
   состава групп и служит единственным источником для хоткеев и усыпления;
-- `NewTab(string? url, TabGroup? group = null)` — по умолчанию в активную группу;
-  если групп нет, создаётся первая «Группа 1»;
-- новые операции: `MoveTab(Tab, TabGroup, int index)`, `MoveGroup(TabGroup, int)`,
-  `CreateGroup(string? name, int? colorIndex)`, `RenameGroup`, `SetGroupColor`,
-  `ToggleGroupCollapsed`, `CloseGroup(TabGroup)`, `RestoreGroups(...)`;
+- операции: `CreateGroup(name, colorIndex)`, `RemoveGroup`, `MoveGroup`,
+  `AddTab(group)`, `RemoveTab`, `MoveTab(tab, target, index)`, `SetActive(tab)`;
+  без переданной группы вкладка кладётся в активную, а если активной нет — в
+  первую, и если групп нет вообще — создаётся первая «Группа 1»;
+- события: `Changed` (состав или порядок вкладок), `GroupsChanged` (создание,
+  переименование, сворачивание, перестановка, удаление групп), `ActiveChanged`.
+
+`TabManager` поверх этого:
+
+- публичные `NewTab(string? url = null, TabGroup? group = null)`,
+  `MoveTab`, `MoveGroup`, `CreateGroup`, `RenameGroup`, `SetGroupColor`,
+  `ToggleGroupCollapsed`, `CloseGroup(TabGroup)`, `RestoreGroups(groups, active)`;
+- `NewTab` без группы кладёт вкладку в активную (`TabGroups.AddTab(null)`), тем же
+  правилом пользуются вкладки из меню и горячих клавиш;
 - `CloseTab` больше не удаляет группу: опустевшая группа остаётся;
 - `CloseGroup` закрывает вкладки по очереди, затем удаляет группу;
 - события: существующий `TabsChanged` шлётся при любом перемещении, новый
@@ -238,6 +254,7 @@ CREATE TABLE IF NOT EXISTS session_tabs (
 | `Services/SessionService.cs` | новое |
 | `Services/StorageService.cs` | таблицы сессии и методы чтения/записи |
 | `Services/TabManager.cs` | группы, перемещения, `RestoreGroups` |
+| `Services/TabGroups.cs` | новое, порядок и состав групп без WPF |
 | `Services/TabDropResolver.cs` | новое, чистая геометрия drop |
 | `Views/TabStripView.xaml(.cs)` | вертикальная полоса, drag, меню |
 | `Views/GroupColumnView.xaml(.cs)` | новое, колонка группы |
