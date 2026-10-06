@@ -116,7 +116,7 @@ public partial class GroupColumnView : UserControl
 
         ColorMark.Background = Palette[Math.Clamp(_group.ColorIndex, 0, Palette.Length - 1)];
         NameText.Text = _group.Name;
-        VerticalName.Text = _group.Name;
+        CollapsedName.Text = _group.Name;
         Badge.Text = _group.Count.ToString();
         CollapsedBadge.Text = _group.Count.ToString();
         // Имя под курсором свёрнутой колонки — подсказка для длинных названий.
@@ -124,11 +124,11 @@ public partial class GroupColumnView : UserControl
 
         var collapsed = _group.IsCollapsed;
         ExpandedPanel.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
-        // Свёрнутая колонка показывает имя вертикально — панель видима,
-        // а не Hidden: иначе узкая полоса остаётся пустой.
+        // Свёрнутая колонка показывает имя и счётчик, без вкладок.
         CollapsedPanel.Visibility = collapsed ? Visibility.Visible : Visibility.Collapsed;
-        // Свёрнутая группа — узкая цветная полоса, вкладки в ней не видны.
-        Width = collapsed ? 32 : 200;
+        // Ширина свёрнутой — по содержимому (имя влезает с запасом через
+        // MaxWidth у имени), развёрнутой — всегда как у обычной колонки.
+        Width = collapsed ? double.NaN : 200;
         CollapseButton.Content = collapsed ? "▸" : "▾";
     }
 
