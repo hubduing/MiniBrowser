@@ -54,6 +54,16 @@ public sealed class AdBlockService
         "connect.facebook.net",
         "ads.linkedin.com",
         "ads-twitter.com",
+        // Русские сети и мобильные SDK, которых нет в EasyList.
+        // Проверено на реальной странице: баннер приходит именно отсюда.
+        // Список намеренно узкий: сюда попадают только домены рекламы и
+        // трекинга. Домены вроде mail.ru, jivo.ru или mindbox.ru сюда не
+        // годятся — под них попадают почта, чаты поддержки и обычная аналитика,
+        // и блокировка сломала бы рабочие сайты.
+        "agl010.pro",
+        "onelink.me",
+        "appsflyer.com",
+        "unityads.unity3d.com",
     };
 
     /// <summary>
@@ -205,9 +215,25 @@ public sealed class AdBlockService
         return value;
     }
 
+    /// <summary>
+    /// Внешний список (EasyList). Заменяется целиком, когда файл загружен,
+    /// и остаётся пустым до этого момента: блокировку всё равно держит
+    /// встроенный список, поэтому старт не ждёт сеть.
+    /// </summary>
+    private EasyListRuleSet? _external;
+
+    /// <summary>Число доменов во внешнем списке — для диагностики и подсказки.</summary>
+    public int ExternalDomainCount => _external?.Domains.Count ?? 0;
+
+    /// <summary>Подставить внешний список фильтров (или null, если его нет).</summary>
+    public void UseExternalList(EasyListRuleSet? rules) => _external = rules;
+
     /// <summary>Совпадение домена с фильтрами. Настройки здесь уже учтены вызывающим.</summary>
-    private static bool IsBlockedHost(string host)
+    private bool IsBlockedHost(string host)
     {
+        // Внешний список проверяется первым: он шире и свежее встроенного.
+        if (_external is not null && _external.Matches(host)) return true;
+
         foreach (var rule in AdHosts)
         {
             if (host == rule) return true;

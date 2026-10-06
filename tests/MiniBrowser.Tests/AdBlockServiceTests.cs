@@ -183,6 +183,107 @@ public class AdBlockServiceTests
 
     // ---- Косметика ----
 
+    // ---- Внешний список (EasyList) ----
+
+    [Fact]
+    public void ExternalList_BlocksItsDomains()
+    {
+        var ad = new AdBlockService(NewSettings());
+        ad.UseExternalList(EasyListParser.Parse("||bigadnet.example^\n"));
+
+        Assert.True(ad.IsBlocked(new Uri("https://bigadnet.example/x.js"), "site.example"));
+        Assert.False(ad.IsBlocked(new Uri("https://site.example/x"), "site.example"));
+    }
+
+    [Fact]
+    public void ExternalList_KeepsWorkingForSubdomains()
+    {
+        var ad = new AdBlockService(NewSettings());
+        ad.UseExternalList(EasyListParser.Parse("||bigadnet.example^"));
+
+        Assert.True(ad.IsBlocked(new Uri("https://cdn.bigadnet.example/a"), "site.example"));
+    }
+
+    [Fact]
+    public void ExternalList_WhitelistStillWins()
+    {
+        // Внешний список расширяет фильтры, но не отменяет права пользователя:
+        // отключение блокировки на сайте должно работать и с ним.
+        var settings = NewSettings();
+        var ad = new AdBlockService(settings);
+        ad.UseExternalList(EasyListParser.Parse("||bigadnet.example^"));
+        ad.ToggleHost("site.example");
+
+        Assert.False(ad.IsBlocked(new Uri("https://bigadnet.example/x.js"), "site.example"));
+    }
+
+    [Fact]
+    public void ExternalList_MasterSwitchStillWins()
+    {
+        var settings = NewSettings();
+        settings.AdBlockEnabled = false;
+        var ad = new AdBlockService(settings);
+        ad.UseExternalList(EasyListParser.Parse("||bigadnet.example^"));
+
+        Assert.False(ad.IsBlocked(new Uri("https://bigadnet.example/x.js"), "site.example"));
+    }
+
+    [Fact]
+    public void ExternalList_ExceptionBeatsExternalBlock()
+    {
+        var ad = new AdBlockService(NewSettings());
+        ad.UseExternalList(EasyListParser.Parse("||net.example^\n@@||cdn.net.example^"));
+
+        Assert.True(ad.IsBlocked(new Uri("https://net.example/x"), "site.example"));
+        Assert.False(ad.IsBlocked(new Uri("https://cdn.net.example/x"), "site.example"));
+    }
+
+    [Fact]
+    public void ExternalList_Null_FallsBackToBuiltIn()
+    {
+        // До загрузки файла внешнего списка нет, и блокировка всё равно должна
+        // работать на встроенном списке — иначе она пропадала бы на старте.
+        var ad = new AdBlockService(NewSettings());
+        ad.UseExternalList(null);
+
+        Assert.Equal(0, ad.ExternalDomainCount);
+        Assert.True(ad.IsBlocked(new Uri("https://doubleclick.net/x.js"), "site.example"));
+    }
+
+    [Fact]
+    public void ExternalDomainCount_ReflectsLoadedList()
+    {
+        var ad = new AdBlockService(NewSettings());
+        ad.UseExternalList(EasyListParser.Parse("||a.example^\n||b.example^\n"));
+        Assert.Equal(2, ad.ExternalDomainCount);
+    }
+
+    // ---- Сети, которых нет в EasyList ----
+
+    [Theory]
+    [InlineData("https://cvt-s1.agl010.pro/o/s/promo.js")]
+    [InlineData("https://b-i.spix.agl010.pro/pt/pixel")]
+    [InlineData("https://impressions.onelink.me/track")]
+    public void IsBlocked_RussianAdNetworks_AreBlocked(string url)
+    {
+        // Именно эти домены отдавали баннер на реальной странице, и в
+        // EasyList их нет — поэтому они встроены в список вручную.
+        var ad = new AdBlockService(NewSettings());
+        Assert.True(ad.IsBlocked(new Uri(url), "site.example"));
+    }
+
+    [Theory]
+    [InlineData("https://mail.ru/")]
+    [InlineData("https://getcourse.ru/course")]
+    [InlineData("https://site.example/page")]
+    public void IsBlocked_WideHostnames_AreNotBlocked(string url)
+    {
+        // Почта и онлайн-курсы — рабочие сайты. Домен вроде mail.ru нельзя
+        // считать рекламным: под него попадает всё, включая саму почту.
+        var ad = new AdBlockService(NewSettings());
+        Assert.False(ad.IsBlocked(new Uri(url), "site.example"));
+    }
+
     [Fact]
     public void CosmeticRules_AreNotEmpty()
     {

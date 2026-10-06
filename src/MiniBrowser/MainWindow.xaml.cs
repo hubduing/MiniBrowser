@@ -19,6 +19,7 @@ public partial class MainWindow : Window, IBrowserActions
     // Сервис создаётся после _settings (поле инициализируется порядком),
     // поэтому объявляем явно и заполняем в конструкторе.
     private readonly AdBlockService _adBlock;
+    private readonly FilterListProvider _filterList;
     private bool _menuOpen;
     private Tab? _titleTab;
     private bool _started;
@@ -46,6 +47,7 @@ public partial class MainWindow : Window, IBrowserActions
         else { Width = _settings.Current.WindowWidth; Height = _settings.Current.WindowHeight; }
 
         _adBlock = new AdBlockService(_settings.Current);
+        _filterList = new FilterListProvider();
 
         _tabManager = new TabManager(
             ContentHost, _storage, this, () => _settings.EffectiveZoom,
@@ -163,6 +165,10 @@ public partial class MainWindow : Window, IBrowserActions
         if (_started) return;
         _started = true;
 
+        // Список фильтров догружается в фоне и не должен задерживать окно:
+        // до его готовности блокировку держит встроенный список.
+        _ = LoadFilterListAsync();
+
         if (_startupUrls.Length > 0)
         {
             // Запуск с аргументами: по URL на вкладку (для тестов и «ярлыков»).
@@ -180,6 +186,25 @@ public partial class MainWindow : Window, IBrowserActions
         {
             _tabManager.NewTab(_settings.Current.HomeUrl);
         }
+    }
+
+    /// <summary>
+/// Подтянуть внешний список фильтров и подставить его движку блокировки.
+/// Провал загрузки — обычное дело (нет сети), и он ничего не ломает:
+/// блокировка остаётся на встроенном списке.
+/// </summary>
+private async Task LoadFilterListAsync()
+{
+        var rules = await _filterList.LoadAsync();
+        if (rules.Domains.Count == 0) return;
+
+        _adBlock.UseExternalList(rules);
+
+        // Уже открытые вкладки получили блокировку по встроенному списку.
+        // Перезагружать их не будем: сетевой фильтр считает решение на каждый
+        // запрос и подхватит новые правила сам, а перезагрузка сбросила бы
+        // пользователю то, что он читал.
+        RefreshAdBlockIndicator();
     }
 
     // ---- Вкладки ----
