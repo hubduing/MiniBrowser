@@ -184,11 +184,9 @@ public sealed class TabManager
 
         if (target is not null)
         {
+            // Активная вкладка навигуется сразу (см. OnActiveTabSet), остальные —
+            // когда пользователь на них придёт: у них движка ещё нет.
             ActivateTab(target);
-            // Страницу восстанавливаем только у активной: остальные вкладки
-            // поднимут свой движок и адрес сами, когда пользователь на них придёт.
-            if (!string.IsNullOrWhiteSpace(target.Url))
-                _ = Navigate(target, target.Url);
         }
 
         TabsChanged?.Invoke();
@@ -334,8 +332,9 @@ public sealed class TabManager
             if (_views.TryGetValue(tab, out var view))
             {
                 view.Visibility = Visibility.Visible;
-                // Вкладку вернули из сна — перезагружаем страницу
-                if (tab.IsAsleep && !string.IsNullOrWhiteSpace(tab.Url))
+                // Вкладка без движка — спящая или восстановленная из сессии —
+                // при показе поднимает свою страницу сама.
+                if (!view.HasEngine && !string.IsNullOrWhiteSpace(tab.Url))
                     _ = Navigate(tab, tab.Url);
             }
         }
