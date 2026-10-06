@@ -11,9 +11,13 @@ public partial class ToolbarView : UserControl
     public event Action<string>? NavigateRequested;
     public event Action? BackRequested;
     public event Action? ForwardRequested;
-    public event Action? RefreshRequested;
-    public event Action? StopRequested;
+    /// <summary>
+    /// Кнопка «⟳/✕» без разбора: тулбар не знает, что сейчас грузится, —
+    /// решение принимает хост, у которого есть состояние движка.
+    /// </summary>
+    public event Action? ReloadStopRequested;
     public event Action? BookmarkAddRequested;
+    public event Action? CopyAddressRequested;
 
     /// <summary>Кнопка ☰ больше не держит ContextMenu: она просит хост открыть панель.</summary>
     public event Action? ToggleDrawerRequested;
@@ -53,14 +57,17 @@ public partial class ToolbarView : UserControl
     public void SetUrl(string url)
     {
         _currentUrl = url;
+        CopyButton.IsEnabled = AddressCopy.CanCopy(url);
         if (_editing) return;
         AddressBox.Text = url;
     }
 
-    public void SetNavState(bool canGoBack, bool canGoForward)
+    public void SetNavState(bool canGoBack, bool canGoForward, bool isLoading)
     {
         BackButton.IsEnabled = canGoBack;
         ForwardButton.IsEnabled = canGoForward;
+        ReloadStopButton.Content = ReloadStopPolicy.Glyph(isLoading);
+        ReloadStopButton.ToolTip = ReloadStopPolicy.ToolTip(isLoading);
     }
 
     /// <summary>
@@ -158,9 +165,9 @@ public partial class ToolbarView : UserControl
 
     private void Back_Click(object sender, RoutedEventArgs e) => BackRequested?.Invoke();
     private void Forward_Click(object sender, RoutedEventArgs e) => ForwardRequested?.Invoke();
-    private void Refresh_Click(object sender, RoutedEventArgs e) => RefreshRequested?.Invoke();
-    private void Stop_Click(object sender, RoutedEventArgs e) => StopRequested?.Invoke();
+    private void ReloadStop_Click(object sender, RoutedEventArgs e) => ReloadStopRequested?.Invoke();
     private void Bookmark_Click(object sender, RoutedEventArgs e) => BookmarkAddRequested?.Invoke();
+    private void Copy_Click(object sender, RoutedEventArgs e) => CopyAddressRequested?.Invoke();
 
     /// <summary>Кнопка меню делегирует открытие панели хосту через событие.</summary>
     private void Menu_Click(object sender, RoutedEventArgs e) => ToggleDrawerRequested?.Invoke();

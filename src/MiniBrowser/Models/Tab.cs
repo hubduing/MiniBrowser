@@ -9,6 +9,7 @@ public sealed class Tab : INotifyPropertyChanged
     private string _url = string.Empty;
     private bool _isActive;
     private bool _isAsleep;
+    private bool _isLoading;
 
     public Guid Id { get; } = Guid.NewGuid();
 
@@ -36,6 +37,16 @@ public sealed class Tab : INotifyPropertyChanged
     {
         get => _isAsleep;
         set { if (_isAsleep != value) { _isAsleep = value; OnPropertyChanged(nameof(IsAsleep)); } }
+    }
+
+    /// <summary>
+    /// true — движок сейчас грузит страницу. По нему кнопка тулбара решает,
+    /// показывать «Остановить» или «Обновить».
+    /// </summary>
+    public bool IsLoading
+    {
+        get => _isLoading;
+        set { if (_isLoading != value) { _isLoading = value; OnPropertyChanged(nameof(IsLoading)); } }
     }
 
     /// <summary>Когда вкладка стала неактивной (для политики усыпления).</summary>

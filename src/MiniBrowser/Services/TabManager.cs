@@ -143,7 +143,19 @@ public sealed class TabManager
     public void GoBackActive() => ActiveView?.GoBack();
     public void GoForwardActive() => ActiveView?.GoForward();
     public void ReloadActive() => ActiveView?.Reload();
-    public void StopActive() => ActiveView?.Stop();
+
+    /// <summary>
+    /// Действие совмещённой кнопки «⟳/✕»: во время загрузки останавливает,
+    /// на settled-странице перезагружает.
+    /// </summary>
+    public void ReloadOrStopActive()
+    {
+        if (ActiveView is not { } view) return;
+        if (ReloadStopPolicy.Decide(view.IsLoading) == ReloadStopAction.Stop)
+            view.Stop();
+        else
+            view.Reload();
+    }
 
     /// <summary>Разослать новый множитель масштаба всем вкладкам (смена настройки).</summary>
     public void ApplyZoomToAllTabs()

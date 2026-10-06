@@ -49,6 +49,9 @@ public partial class BrowserTabView : UserControl
     public bool CanGoBack => _web?.CoreWebView2?.CanGoBack == true;
     public bool CanGoForward => _web?.CoreWebView2?.CanGoForward == true;
 
+    /// <summary>true — движок грузит страницу (для совмещённой кнопки тулбара).</summary>
+    public bool IsLoading => _tab.IsLoading;
+
     public async Task NavigateAsync(string url)
     {
         try
@@ -178,7 +181,14 @@ public partial class BrowserTabView : UserControl
     {
         var core = _web!.CoreWebView2!;
 
-        core.NavigationStarting += (_, e) => _tab.Url = e.Uri;
+        core.NavigationStarting += (_, e) =>
+        {
+            _tab.Url = e.Uri;
+            // Флаг загрузки живёт на модели: по нему хост переключает кнопку
+            // тулбара на «Остановить». SourceChanged про него не знает.
+            _tab.IsLoading = true;
+            StateChanged?.Invoke(_tab);
+        };
 
         core.SourceChanged += (_, _) =>
         {
@@ -194,11 +204,20 @@ public partial class BrowserTabView : UserControl
 
         core.NavigationCompleted += (_, e) =>
         {
+            _tab.IsLoading = false;
+
             if (e.IsSuccess)
             {
                 Overlay.Visibility = Visibility.Collapsed;
                 _tab.IsAsleep = false;
                 Navigated?.Invoke(_tab, _tab.Url);
+            }
+            else if (e.WebErrorStatus == CoreWebView2WebErrorStatus.OperationCanceled)
+            {
+                // Пользователь нажал «Остановить»: это не ошибка. Движок сообщает
+                // об отмене как о неуспехе, поэтому без этой ветки обычный стоп
+                // выглядел бы как «страница не загрузилась».
+                Overlay.Visibility = Visibility.Collapsed;
             }
             else
             {

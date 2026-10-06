@@ -10,13 +10,15 @@
                         Style="{StaticResource FlatToolButton}" ToolTip="Назад (Alt+←)"/>
                 <Button x:Name="ForwardButton" Content="▶" Click="Forward_Click"
                         Style="{StaticResource FlatToolButton}" ToolTip="Вперёд (Alt+→)"/>
-                <Button Content="⟳" Click="Refresh_Click"
+                <!-- Одна кнопка на оба действия: во время загрузки это «стоп»,
+                     на settled-странице — «обновить». Как в Chrome/Edge/Firefox. -->
+                <Button x:Name="ReloadStopButton" Content="⟳" Click="ReloadStop_Click"
                         Style="{StaticResource FlatToolButton}" ToolTip="Обновить (Ctrl+R)"/>
-                <Button Content="✕" Click="Stop_Click"
-                        Style="{StaticResource FlatToolButton}" ToolTip="Остановить загрузку"/>
             </StackPanel>
 
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button x:Name="CopyButton" Content="⧉" Click="Copy_Click"
+                        Style="{StaticResource FlatToolButton}" ToolTip="Скопировать адрес"/>
                 <Button Content="☆" Click="Bookmark_Click"
                         Style="{StaticResource FlatToolButton}" ToolTip="Добавить в закладки (Ctrl+D)"/>
                 <Button x:Name="MenuButton" Content="☰" Click="Menu_Click"

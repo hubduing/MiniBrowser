@@ -58,9 +58,9 @@ public partial class MainWindow : Window, IBrowserActions
         Toolbar.NavigateRequested += url => _tabManager.NavigateActive(url);
         Toolbar.BackRequested += _tabManager.GoBackActive;
         Toolbar.ForwardRequested += _tabManager.GoForwardActive;
-        Toolbar.RefreshRequested += _tabManager.ReloadActive;
-        Toolbar.StopRequested += _tabManager.StopActive;
+        Toolbar.ReloadStopRequested += _tabManager.ReloadOrStopActive;
         Toolbar.BookmarkAddRequested += AddBookmark;
+        Toolbar.CopyAddressRequested += CopyAddress;
 
         _drawerVm = new MenuDrawerViewModel(_storage, _settings);
         Drawer.DataContext = _drawerVm;
@@ -202,7 +202,7 @@ public partial class MainWindow : Window, IBrowserActions
     private void RefreshNavState()
     {
         var view = _tabManager.ActiveView;
-        Toolbar.SetNavState(view?.CanGoBack == true, view?.CanGoForward == true);
+        Toolbar.SetNavState(view?.CanGoBack == true, view?.CanGoForward == true, view?.IsLoading == true);
     }
 
     private void OnNavigated(Tab tab, string url)
@@ -338,6 +338,20 @@ public partial class MainWindow : Window, IBrowserActions
         if (_tabManager.ActiveTab is not { } tab || string.IsNullOrWhiteSpace(tab.Url)) return;
         _storage.AddBookmark(tab.Url, tab.Title);
         StatusText.Text = $"Закладка сохранена: {tab.Title}";
+    }
+
+    private void CopyAddress()
+    {
+        if (_tabManager.ActiveTab is not { } tab || !AddressCopy.CanCopy(tab.Url)) return;
+        try
+        {
+            Clipboard.SetText(tab.Url);
+            StatusText.Text = "Адрес скопирован";
+        }
+        catch
+        {
+            StatusText.Text = "Не удалось скопировать адрес";
+        }
     }
 
     /// <summary>
