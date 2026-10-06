@@ -35,6 +35,9 @@ public partial class MenuDrawerView : UserControl
     /// </summary>
     public event Action<string>? OpenUrlRequested;
 
+    /// <summary>Кнопка «Импорт данных из других браузеров» в настройках: хост открывает диалог.</summary>
+    public event Action? ImportDataRequested;
+
     public bool IsDrawerOpen { get; private set; }
 
     public MenuDrawerView()
@@ -78,6 +81,8 @@ public partial class MenuDrawerView : UserControl
     public void SelectTab(int index) => Tabs.SelectedIndex = Math.Clamp(index, 0, 2);
 
     private void Panel_Close_Click(object sender, RoutedEventArgs e) => CloseRequested?.Invoke();
+
+    private void ImportData_Click(object sender, RoutedEventArgs e) => ImportDataRequested?.Invoke();
 
     private void Dim_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) => CloseRequested?.Invoke();
 

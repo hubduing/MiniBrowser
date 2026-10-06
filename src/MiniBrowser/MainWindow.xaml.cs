@@ -5,6 +5,7 @@ using System.Windows.Interop;
 using System.Windows.Threading;
 using MiniBrowser.Models;
 using MiniBrowser.Services;
+using MiniBrowser.Services.Import;
 using MiniBrowser.ViewModels;
 using MiniBrowser.Views;
 
@@ -14,6 +15,8 @@ public partial class MainWindow : Window, IBrowserActions
 {
     private readonly StorageService _storage = new();
     private readonly SettingsService _settings = new();
+    // Хранилище паролей поверх той же БД; создаётся после _storage в конструкторе.
+    private readonly PasswordStore _passwords;
     private readonly SessionService _sessionService;
     private readonly TabManager _tabManager;
     private readonly string[] _startupUrls;
@@ -53,6 +56,7 @@ public partial class MainWindow : Window, IBrowserActions
         _adBlock = new AdBlockService(_settings.Current);
         _filterList = new FilterListProvider();
         _sessionService = new SessionService(_storage);
+        _passwords = new PasswordStore(_storage);
 
         _tabManager = new TabManager(
             ContentHost, _storage, this, () => _settings.EffectiveZoom,
@@ -108,6 +112,7 @@ public partial class MainWindow : Window, IBrowserActions
         _drawerVm.SettingsChanged += ApplySettings;
         _drawerVm.AdBlockStateChanged += RefreshAdBlockIndicator;
         Toolbar.ToggleDrawerRequested += () => SetMenuOpen(!_menuOpen);
+        Drawer.ImportDataRequested += OpenImportDialog;
 
         // Горячие клавиши перехватываем хуком: сообщения клавиатуры приходят и на
         // дочерний HWND WebView2, WPF-события окна их не видят.
@@ -434,6 +439,16 @@ public partial class MainWindow : Window, IBrowserActions
     void IBrowserActions.ToggleMenu() => SetMenuOpen(!_menuOpen);
     void IBrowserActions.ShowHistory() { _drawerVm.ClearSearchCommand.Execute(null); Drawer.SelectTab(1); SetMenuOpen(true); }
     void IBrowserActions.ShowBookmarks() { _drawerVm.ClearSearchCommand.Execute(null); Drawer.SelectTab(0); SetMenuOpen(true); }
+
+    /// <summary>Импорт данных из чужого браузера — диалог из настроек панели меню.</summary>
+    private void OpenImportDialog()
+    {
+        var dialog = new ImportDialogWindow(_storage, _passwords, BrowserDetector.Detect())
+        {
+            Owner = this,
+        };
+        dialog.ShowDialog();
+    }
     bool IBrowserActions.IsMenuOpen => _menuOpen;
 
     private void ActivateNextTab()
