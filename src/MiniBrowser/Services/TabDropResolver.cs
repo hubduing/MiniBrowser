@@ -53,16 +53,12 @@ public static class TabDropResolver
         if (hit.IsCollapsed || hit.Tabs.Count == 0 || pointer.Y < hit.Bounds.Top + HeaderHeight)
             return new DropTarget(DropKind.Group, hit.Group, hit.Tabs.Count);
 
-        // Строки вкладок идут в порядке чтения — слева направо, сверху вниз.
-        // Курсор встаёт перед первой строкой, которая по этой логике ещё правее
-        // или ниже: верхняя половина её прямоугольника слева от курсора.
+        // Строки вкладок идут сверху вниз, каждая — на всю ширину: курсор
+        // встаёт перед первой строкой, верхняя половина которой ещё ниже.
         for (var i = 0; i < hit.Tabs.Count; i++)
         {
             var row = hit.Tabs[i].Bounds;
-            var above = pointer.Y < row.Top;
-            var leftInTopHalf = pointer.Y <= row.Top + row.Height / 2 &&
-                                pointer.X <= row.Left + row.Width / 2;
-            if (above || leftInTopHalf)
+            if (pointer.Y < row.Top + row.Height / 2)
                 return new DropTarget(DropKind.BetweenTabs, hit.Group, i);
         }
 

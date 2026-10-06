@@ -75,8 +75,7 @@
                             ToolTip="Закрыть все вкладки группы"/>
                 </Grid>
 
-                <!-- Вкладки идут горизонтально и переносятся на следующую строку,
-                     когда ширина группы заканчивается. -->
+                <!-- Вкладки — строки на всю ширину группы, одна под другой. -->
                 <ItemsControl x:Name="TabsItems"
                               HorizontalContentAlignment="Stretch"
                               PreviewMouseLeftButtonDown="Tab_PreviewMouseDown"
@@ -84,7 +83,7 @@
                               PreviewMouseMove="Tab_PreviewMouseMove">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
-                            <WrapPanel Orientation="Horizontal"/>
+                            <StackPanel Orientation="Vertical"/>
                         </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
@@ -116,7 +115,6 @@
                                     <TextBlock Text="{Binding Title}"
                                                VerticalAlignment="Center"
                                                FontSize="13"
-                                               MaxWidth="220"
                                                TextTrimming="CharacterEllipsis">
                                         <TextBlock.Style>
                                             <Style TargetType="TextBlock">
