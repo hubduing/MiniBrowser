@@ -52,6 +52,7 @@ public class SettingsServiceTests : IDisposable
         first.Current.DefaultFontSize = 20;
         first.Current.HomeUrl = "https://example.org/";
         first.Current.SearchUrl = "https://example.org/search?q={0}";
+        first.Current.TabStripCollapsed = true;
         first.Save();
 
         var second = new SettingsService(_path);
@@ -63,6 +64,7 @@ public class SettingsServiceTests : IDisposable
         Assert.Equal(20, second.Current.DefaultFontSize);
         Assert.Equal("https://example.org/", second.Current.HomeUrl);
         Assert.Equal("https://example.org/search?q={0}", second.Current.SearchUrl);
+        Assert.True(second.Current.TabStripCollapsed);
     }
 
     [Theory]
@@ -140,6 +142,7 @@ public class SettingsServiceTests : IDisposable
             SearchUrl = "https://y/{0}",
             ShowStatusBar = false,
             DefaultFontSize = 13,
+            TabStripCollapsed = true,
             AdBlockEnabled = false,
             AdBlockDisabledHosts = new List<string> { "example.com" },
         };
@@ -152,6 +155,7 @@ public class SettingsServiceTests : IDisposable
         Assert.Equal("https://www.google.com/search?q={0}", settings.SearchUrl);
         Assert.True(settings.ShowStatusBar);
         Assert.Equal(16, settings.DefaultFontSize);
+        Assert.False(settings.TabStripCollapsed);
         Assert.True(settings.AdBlockEnabled);
         Assert.Empty(settings.AdBlockDisabledHosts);
     }

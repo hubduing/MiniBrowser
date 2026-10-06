@@ -12,6 +12,18 @@ public sealed class AppSettings
     public bool ShowStatusBar { get; set; } = true;
     public double DefaultFontSize { get; set; } = 16;
 
+    /// <summary>Ширина вертикальной полосы вкладок слева.</summary>
+    public double TabStripWidth { get; set; } = 240;
+
+    /// <summary>Панель вкладок скрыта кнопкой «≡»; состояние переживает перезапуск.</summary>
+    public bool TabStripCollapsed { get; set; } = false;
+
+    /// <summary>
+    /// Восстанавливать раскладку групп и вкладок при запуске. По умолчанию да:
+    /// группы без этого терялись бы при каждом перезапуске браузера.
+    /// </summary>
+    public bool RestoreSession { get; set; } = true;
+
     /// <summary>Блокировка рекламы включена по умолчанию; выключается кнопкой или в настройках.</summary>
     public bool AdBlockEnabled { get; set; } = true;
 

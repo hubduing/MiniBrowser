@@ -24,6 +24,8 @@ public partial class ToolbarView : UserControl
 
     /// <summary>Кнопка ☰ больше не держит ContextMenu: она просит хост открыть панель.</summary>
     public event Action? ToggleDrawerRequested;
+    /// <summary>Кнопка переключения боковой панели вкладок.</summary>
+    public event Action? ToggleTabStripRequested;
 
     /// <summary>
     /// Шаблон поиска приходит снаружи из настроек: тулбар не знает про SettingsService,
@@ -186,6 +188,7 @@ public partial class ToolbarView : UserControl
     private void Bookmark_Click(object sender, RoutedEventArgs e) => BookmarkAddRequested?.Invoke();
     private void Copy_Click(object sender, RoutedEventArgs e) => CopyAddressRequested?.Invoke();
     private void AdBlock_Click(object sender, RoutedEventArgs e) => ToggleAdBlockRequested?.Invoke();
+    private void TabStripToggle_Click(object sender, RoutedEventArgs e) => ToggleTabStripRequested?.Invoke();
 
     /// <summary>Кнопка меню делегирует открытие панели хосту через событие.</summary>
     private void Menu_Click(object sender, RoutedEventArgs e) => ToggleDrawerRequested?.Invoke();

@@ -56,6 +56,9 @@ public sealed class SettingsService
         settings.SearchUrl = defaults.SearchUrl;
         settings.ShowStatusBar = defaults.ShowStatusBar;
         settings.DefaultFontSize = defaults.DefaultFontSize;
+        settings.TabStripWidth = defaults.TabStripWidth;
+        settings.TabStripCollapsed = defaults.TabStripCollapsed;
+        settings.RestoreSession = defaults.RestoreSession;
         settings.AdBlockEnabled = defaults.AdBlockEnabled;
         // Список не переиспользуем: сброс обязан отвязать его от дефолтного
         // экземпляра, иначе ClearDisabledHosts() обнулил бы и «настоящие» дефолты.
@@ -88,6 +91,9 @@ public sealed class SettingsService
         settings.DefaultFontSize = Normalize(settings.DefaultFontSize, 16, 13, 20);
         settings.WindowWidth = Normalize(settings.WindowWidth, 1200, 640, 10000);
         settings.WindowHeight = Normalize(settings.WindowHeight, 800, 400, 10000);
+        // Полоса вкладок уже указанной ширины: иначе окно нельзя было бы вернуть
+        // на место, если значение пришло мусором.
+        settings.TabStripWidth = Normalize(settings.TabStripWidth, 240, 150, 420);
 
         // Пустой URL ломает навигацию, поэтому возвращаем дефолт вместо пустоты.
         if (string.IsNullOrWhiteSpace(settings.HomeUrl))

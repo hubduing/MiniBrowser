@@ -24,7 +24,15 @@ public class HotkeysTests
         public void ShowHistory() => Calls.Add("ShowHistory");
         public void ShowBookmarks() => Calls.Add("ShowBookmarks");
         public void ToggleAdBlock() => Calls.Add("ToggleAdBlock");
+        public void ToggleTabStrip() => Calls.Add("ToggleTabStrip");
         bool IBrowserActions.IsManualFullscreen => IsManualFullscreen;
+    }
+
+    [Fact] public void CtrlShiftL_TogglesTabStrip()
+    {
+        var a = new FakeActions();
+        Assert.True(Hotkeys.TryHandle(Key.L, ModifierKeys.Control | ModifierKeys.Shift, a));
+        Assert.Equal(new[] { "ToggleTabStrip" }, a.Calls);
     }
 
     [Fact] public void CtrlShiftA_TogglesAdBlock()

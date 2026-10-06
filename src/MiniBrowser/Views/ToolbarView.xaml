@@ -10,6 +10,8 @@
                         Style="{StaticResource FlatToolButton}" ToolTip="Назад (Alt+←)"/>
                 <Button x:Name="ForwardButton" Content="▶" Click="Forward_Click"
                         Style="{StaticResource FlatToolButton}" ToolTip="Вперёд (Alt+→)"/>
+                <Button x:Name="TabStripToggleButton" Content="≡" Click="TabStripToggle_Click"
+                        Style="{StaticResource FlatToolButton}" ToolTip="Переключить боковую панель вкладок (Ctrl+Shift+L)"/>
                 <!-- Одна кнопка на оба действия: во время загрузки это «стоп»,
                      на settled-странице — «обновить». Как в Chrome/Edge/Firefox. -->
                 <Button x:Name="ReloadStopButton" Content="⟳" Click="ReloadStop_Click"

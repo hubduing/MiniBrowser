@@ -23,6 +23,9 @@ public interface IBrowserActions
     /// <summary>Переключить блокировку рекламы на текущем сайте.</summary>
     void ToggleAdBlock();
 
+    /// <summary>Показать/скрыть боковую панель вкладок.</summary>
+    void ToggleTabStrip();
+
     /// <summary>true — пользователь включил F11-режим (не HTML5-полноэкранный).</summary>
     bool IsManualFullscreen { get; }
 
@@ -55,6 +58,7 @@ public static class Hotkeys
                 if (key == Key.Tab) { actions.PrevTab(); return true; }
                 if (key == Key.B) { actions.ShowBookmarks(); return true; }
                 if (key == Key.A) { actions.ToggleAdBlock(); return true; }
+                if (key == Key.L) { actions.ToggleTabStrip(); return true; }
                 break;
 
             case ModifierKeys.Alt:

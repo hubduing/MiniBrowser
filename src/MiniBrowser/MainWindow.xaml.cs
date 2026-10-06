@@ -85,6 +85,7 @@ public partial class MainWindow : Window, IBrowserActions
         // Ширина полосы живёт в настройках: её тянут мышью, а сохранять
         // приходится один раз за перетаскивание, а не на каждом кадре.
         TabStrip.Width = _settings.Current.TabStripWidth;
+        ApplyTabStripVisibility();
 
         Toolbar.SearchTemplate = _settings.Current.SearchUrl;
         Toolbar.NavigateRequested += url => _tabManager.NavigateActive(url);
@@ -94,6 +95,7 @@ public partial class MainWindow : Window, IBrowserActions
         Toolbar.BookmarkAddRequested += AddBookmark;
         Toolbar.CopyAddressRequested += CopyAddress;
         Toolbar.ToggleAdBlockRequested += ToggleAdBlock;
+        Toolbar.ToggleTabStripRequested += ToggleTabStrip;
 
         _drawerVm = new MenuDrawerViewModel(_storage, _settings);
         Drawer.DataContext = _drawerVm;
@@ -286,6 +288,28 @@ public partial class MainWindow : Window, IBrowserActions
     {
         TabStrip.Groups = _tabManager.Groups.ToList();
         TabStrip.SetActiveGroup(_tabManager.ActiveGroup);
+    }
+
+    /// <summary>
+    /// Показать/скрыть панель вкладок кнопкой «≡». Скрываем и ручку ширины:
+    /// без неё осталась бы тонкая полоса-разделитель. Состояние сохраняется.
+    /// </summary>
+    private void ToggleTabStrip()
+    {
+        _settings.Current.TabStripCollapsed = !_settings.Current.TabStripCollapsed;
+        _settings.Save();
+        ApplyTabStripVisibility();
+    }
+
+    /// <summary>
+    /// Панель видима, только если её не скрыл пользователь И окно не в
+    /// полноэкранном режиме: иначе кнопка показывала бы её поверх fullscreen.
+    /// </summary>
+    private void ApplyTabStripVisibility()
+    {
+        var visible = !_settings.Current.TabStripCollapsed && !_isFullscreenApplied;
+        TabStrip.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        StripThumb.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void RefreshNavState()
@@ -505,6 +529,8 @@ public partial class MainWindow : Window, IBrowserActions
 
     void IBrowserActions.ToggleAdBlock() => ToggleAdBlock();
 
+    void IBrowserActions.ToggleTabStrip() => ToggleTabStrip();
+
     /// <summary>Щит в тулбаре показывает состояние активной вкладки.</summary>
     private void RefreshAdBlockIndicator()
     {
@@ -619,7 +645,7 @@ public partial class MainWindow : Window, IBrowserActions
             _savedWindowState = WindowState;
 
             Toolbar.Visibility = Visibility.Collapsed;
-            TabStrip.Visibility = Visibility.Collapsed;
+            ApplyTabStripVisibility();
             StatusText.Visibility = Visibility.Collapsed;
             StatusBarBorder.Visibility = Visibility.Collapsed;
             // Панель — отдельное окно поверх: гасим сразу, без задержки анимации,
@@ -635,7 +661,7 @@ public partial class MainWindow : Window, IBrowserActions
         else
         {
             Toolbar.Visibility = Visibility.Visible;
-            TabStrip.Visibility = Visibility.Visible;
+            ApplyTabStripVisibility();
             StatusText.Visibility = Visibility.Visible;
             // Статусную строку могли скрыть в настройках: восстанавливаем её
             // состояние из настроек, а не всегда видимой.
