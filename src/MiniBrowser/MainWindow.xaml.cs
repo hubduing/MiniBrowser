@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Threading;
 using MiniBrowser.Models;
 using MiniBrowser.Services;
 using MiniBrowser.ViewModels;
@@ -13,6 +14,7 @@ public partial class MainWindow : Window, IBrowserActions
 {
     private readonly StorageService _storage = new();
     private readonly SettingsService _settings = new();
+    private readonly SessionService _sessionService;
     private readonly TabManager _tabManager;
     private readonly string[] _startupUrls;
     private readonly MenuDrawerViewModel _drawerVm;
@@ -23,6 +25,8 @@ public partial class MainWindow : Window, IBrowserActions
     private bool _menuOpen;
     private Tab? _titleTab;
     private bool _started;
+    private DispatcherTimer? _sessionSaveTimer;
+
     // Полноэкранный режим имеет два независимых источника:
     //   _manualFullscreen — пользователь нажал F11;
     //   _pageFullscreen  — страница (видео) ушла в HTML5-fullscreen.
@@ -48,20 +52,39 @@ public partial class MainWindow : Window, IBrowserActions
 
         _adBlock = new AdBlockService(_settings.Current);
         _filterList = new FilterListProvider();
+        _sessionService = new SessionService(_storage);
 
         _tabManager = new TabManager(
             ContentHost, _storage, this, () => _settings.EffectiveZoom,
             _adBlock.IsBlocked, _adBlock.BuildCosmeticScript);
         _tabManager.TabsChanged += RefreshTabStrip;
+        _tabManager.GroupsChanged += RefreshTabStrip;
         _tabManager.ActiveTabChanged += OnActiveTabChanged;
         _tabManager.StateChanged += _ => RefreshNavState();
         _tabManager.Navigated += OnNavigated;
         _tabManager.ActiveViewFullscreenChanged += OnPageFullscreenChanged;
 
-        TabStrip.Items = _tabManager.Tabs.ToList();
+        TabStrip.Groups = _tabManager.Groups.ToList();
         TabStrip.TabActivated += t => _tabManager.ActivateTab(t);
         TabStrip.TabCloseRequested += CloseTab;
         TabStrip.NewTabRequested += () => NewTab();
+        TabStrip.GroupCreateRequested += () => _tabManager.CreateGroup();
+        TabStrip.GroupCloseRequested += CloseGroup;
+        TabStrip.GroupCollapseToggled += _tabManager.ToggleGroupCollapsed;
+        TabStrip.GroupRenameRequested += group => TabStrip.BeginRename(group);
+        TabStrip.GroupColorRequested += (group, color) =>
+        {
+            _tabManager.SetGroupColor(group, color);
+            TabStrip.RefreshColumns();
+        };
+        TabStrip.GroupMoveRequested += (group, index) => _tabManager.MoveGroup(group, index);
+        TabStrip.TabMoveRequested += (tab, point) => MoveTabByDrop(tab, point);
+        TabStrip.TabCreateGroupRequested += tab => CreateGroupFromTab(tab);
+        TabStrip.TabLeaveGroupRequested += LeaveGroup;
+
+        // Ширина полосы живёт в настройках: её тянут мышью, а сохранять
+        // приходится один раз за перетаскивание, а не на каждом кадре.
+        TabStrip.Width = _settings.Current.TabStripWidth;
 
         Toolbar.SearchTemplate = _settings.Current.SearchUrl;
         Toolbar.NavigateRequested += url => _tabManager.NavigateActive(url);
@@ -87,6 +110,22 @@ public partial class MainWindow : Window, IBrowserActions
         // Хук срабатывает только когда активно окно НАШЕГО процесса.
         _hookProc = KeyboardProc;
         _keyboardHook = SetWindowsHookEx(WhKeyboardLl, _hookProc, GetModuleHandle(null), 0);
+
+        // Таймер отложенного сохранения сессии (2 сек)
+        _sessionSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _sessionSaveTimer.Tick += (_, __) =>
+        {
+            _sessionSaveTimer.Stop();
+            SaveSessionDebounced();
+        };
+        _tabManager.SessionDirty += () =>
+        {
+            if (_sessionSaveTimer != null)
+            {
+                _sessionSaveTimer.Stop();
+                _sessionSaveTimer.Start();
+            }
+        };
     }
 
     private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
@@ -169,32 +208,37 @@ public partial class MainWindow : Window, IBrowserActions
         // до его готовности блокировку держит встроенный список.
         _ = LoadFilterListAsync();
 
-        if (_startupUrls.Length > 0)
+        var plan = StartupPlan.Decide(_settings.Current.RestoreSession, _sessionService, _startupUrls);
+        switch (plan.Action)
         {
-            // Запуск с аргументами: по URL на вкладку (для тестов и «ярлыков»).
-            // Вкладка активируется перед навигацией — движок создаётся лениво,
-            // только когда вкладка видима.
-            foreach (var raw in _startupUrls)
-            {
-                var url = NavigationService.BuildUrl(raw, _settings.Current.SearchUrl) ?? raw;
-                var tab = _tabManager.NewTab();
-                await _tabManager.Navigate(tab, url);
-            }
-            _tabManager.ActivateTab(_tabManager.Tabs[0]);
-        }
-        else
-        {
-            _tabManager.NewTab(_settings.Current.HomeUrl);
+            case StartupPlan.StartupAction.RestoreSession:
+                _tabManager.RestoreGroups(plan.RestoredGroups!, plan.ActiveTab);
+                break;
+
+            case StartupPlan.StartupAction.StartupUrls:
+                foreach (var raw in plan.StartupUrls!)
+                {
+                    var url = NavigationService.BuildUrl(raw, _settings.Current.SearchUrl) ?? raw;
+                    var tab = _tabManager.NewTab();
+                    await _tabManager.Navigate(tab, url);
+                }
+                _tabManager.ActivateTab(_tabManager.Tabs[0]);
+                break;
+
+            case StartupPlan.StartupAction.HomePage:
+            default:
+                _tabManager.NewTab(_settings.Current.HomeUrl);
+                break;
         }
     }
 
     /// <summary>
-/// Подтянуть внешний список фильтров и подставить его движку блокировки.
-/// Провал загрузки — обычное дело (нет сети), и он ничего не ломает:
-/// блокировка остаётся на встроенном списке.
-/// </summary>
-private async Task LoadFilterListAsync()
-{
+    /// Подтянуть внешний список фильтров и подставить его движку блокировки.
+    /// Провал загрузки — обычное дело (нет сети), и он ничего не ломает:
+    /// блокировка остаётся на встроенном списке.
+    /// </summary>
+    private async Task LoadFilterListAsync()
+    {
         var rules = await _filterList.LoadAsync();
         if (rules.Domains.Count == 0) return;
 
@@ -221,6 +265,12 @@ private async Task LoadFilterListAsync()
         if (_tabManager.Tabs.Count == 0) Close();
     }
 
+    private void CloseGroup(TabGroup group)
+    {
+        _tabManager.CloseGroup(group);
+        if (_tabManager.Tabs.Count == 0) Close();
+    }
+
     private void OnActiveTabChanged(Tab tab)
     {
         Toolbar.SetUrl(tab.Url);
@@ -232,7 +282,11 @@ private async Task LoadFilterListAsync()
             Toolbar.FocusAddress();
     }
 
-    private void RefreshTabStrip() => TabStrip.Items = _tabManager.Tabs.ToList();
+    private void RefreshTabStrip()
+    {
+        TabStrip.Groups = _tabManager.Groups.ToList();
+        TabStrip.SetActiveGroup(_tabManager.ActiveGroup);
+    }
 
     private void RefreshNavState()
     {
@@ -277,13 +331,14 @@ private async Task LoadFilterListAsync()
 
     void IBrowserActions.FocusAddressBar() => Toolbar.FocusAddress();
 
-    void IBrowserActions.NextTab() => SwitchTab(+1);
+    void IBrowserActions.NextTab() => ActivateNextTab();
 
-    void IBrowserActions.PrevTab() => SwitchTab(-1);
+    void IBrowserActions.PrevTab() => ActivatePrevTab();
 
     void IBrowserActions.AddBookmark() => AddBookmark();
 
     void IBrowserActions.GoBack() => _tabManager.GoBackActive();
+
     void IBrowserActions.GoForward() => _tabManager.GoForwardActive();
 
     void IBrowserActions.ToggleFullscreen()
@@ -355,19 +410,67 @@ private async Task LoadFilterListAsync()
     void IBrowserActions.ShowBookmarks() { _drawerVm.ClearSearchCommand.Execute(null); Drawer.SelectTab(0); SetMenuOpen(true); }
     bool IBrowserActions.IsMenuOpen => _menuOpen;
 
-    private void SwitchTab(int delta)
+    private void ActivateNextTab()
     {
         var tabs = _tabManager.Tabs;
-        if (_tabManager.ActiveTab is null || tabs.Count == 0) return;
+        if (tabs.Count == 0) return;
+        var idx = tabs.ToList().IndexOf(_tabManager.ActiveTab!);
+        var next = tabs[(idx + 1) % tabs.Count];
+        _tabManager.ActivateTab(next);
+    }
 
-        var current = 0;
-        for (var i = 0; i < tabs.Count; i++)
+    private void ActivatePrevTab()
+    {
+        var tabs = _tabManager.Tabs;
+        if (tabs.Count == 0) return;
+        var idx = tabs.ToList().IndexOf(_tabManager.ActiveTab!);
+        var prev = tabs[(idx - 1 + tabs.Count) % tabs.Count];
+        _tabManager.ActivateTab(prev);
+    }
+
+    /// <summary>
+    /// Куда упала вкладка: решение принимает TabDropResolver по геометрии колонок,
+    /// перемещение — TabManager. Здесь только связывание двух.
+    /// </summary>
+    private void MoveTabByDrop(Tab tab, Point point)
+    {
+        // Вкладку могли закрыть, пока её тянули: тогда перемещать нечего.
+        if (!_tabManager.Contains(tab)) return;
+
+        var target = TabDropResolver.Resolve(point, TabStrip.BuildColumnsGeometry());
+        switch (target.Kind)
         {
-            if (tabs[i] == _tabManager.ActiveTab) { current = i; break; }
+            case DropKind.Group when target.Group is not null:
+                _tabManager.MoveTab(tab, target.Group, target.Group.Tabs.Count);
+                break;
+            case DropKind.BetweenTabs when target.Group is not null:
+                _tabManager.MoveTab(tab, target.Group, target.Index);
+                break;
+        }
+    }
+
+    private void CreateGroupFromTab(Tab tab)
+    {
+        if (!_tabManager.Contains(tab)) return;
+
+        var group = _tabManager.CreateGroup();
+        _tabManager.MoveTab(tab, group, 0);
+        TabStrip.BeginRename(group);
+    }
+
+    private void LeaveGroup(Tab tab)
+    {
+        if (!_tabManager.Contains(tab)) return;
+
+        var groups = _tabManager.Groups;
+        if (groups.Count <= 1)
+        {
+            _tabManager.MoveTab(tab, _tabManager.CreateGroup(), 0);
+            return;
         }
 
-        var index = (current + delta + tabs.Count) % tabs.Count;
-        _tabManager.ActivateTab(tabs[index]);
+        var target = groups.FirstOrDefault(g => !g.Tabs.Contains(tab)) ?? _tabManager.CreateGroup();
+        _tabManager.MoveTab(tab, target, target.Tabs.Count);
     }
 
     /// <summary>
@@ -581,5 +684,17 @@ private async Task LoadFilterListAsync()
         GC.KeepAlive(_hookProc);
         _tabManager.Shutdown();
         _storage.Dispose();
+    }
+
+    private void SaveSessionDebounced()
+    {
+        if (_settings.Current.RestoreSession)
+        {
+            try
+            {
+                _sessionService.Save(_tabManager.Groups, _tabManager.ActiveTab);
+            }
+            catch { /* Сессия не обязана переживать сбой записи */ }
+        }
     }
 }

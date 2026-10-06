@@ -104,6 +104,7 @@ public sealed class TabGroups
 
         Rebuild();
         SetActive(tab);
+        Changed?.Invoke();
         return tab;
     }
 

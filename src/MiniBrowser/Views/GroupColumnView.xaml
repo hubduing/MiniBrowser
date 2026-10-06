@@ -1,0 +1,153 @@
+<UserControl x:Class="MiniBrowser.Views.GroupColumnView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             AllowDrop="True"
+             Width="200"
+             DragOver="OnDragOver" DragLeave="OnDragLeave" Drop="OnDrop">
+
+    <Border x:Name="Surface" Margin="0,0,6,0">
+        <Border.Style>
+            <!-- Фон колонки и рамка цели при перетаскивании: в одном стиле,
+                 иначе Setter фона перекрыл бы триггер рамки. -->
+            <Style TargetType="Border" BasedOn="{StaticResource GroupColumnSurface}">
+                <Setter Property="BorderThickness" Value="0"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsDropTarget, ElementName=Root}" Value="True">
+                        <Setter Property="BorderBrush" Value="{StaticResource T.Accent}"/>
+                        <Setter Property="BorderThickness" Value="1"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </Border.Style>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Цветовая метка: читается и у свёрнутой группы -->
+            <Border x:Name="ColorMark" Grid.Column="0"/>
+
+            <DockPanel x:Name="ExpandedPanel" Grid.Column="1">
+                <!-- Заголовок: сворачивание, имя, счётчик, закрыть. Захват мыши нужен и для
+                     перетаскивания колонки, поэтому фон явно прозрачный. -->
+                <Grid DockPanel.Dock="Top" Height="28" Margin="4,2,2,0" Background="Transparent"
+                      PreviewMouseLeftButtonDown="Header_PreviewMouseDown"
+                      PreviewMouseMove="Header_PreviewMouseMove"
+                      PreviewMouseRightButtonDown="Header_PreviewMouseRightButtonDown">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Button x:Name="CollapseButton" Grid.Column="0" Content="▾"
+                            Style="{StaticResource GroupHeaderButton}"
+                            Click="Collapse_Click"
+                            ToolTip="Свернуть группу"/>
+
+                    <!-- Имя правится только двойным кликом: одиночный не должен
+                         переименовывать группу случайно. -->
+                    <Grid Grid.Column="1" Margin="4,0">
+                        <TextBlock x:Name="NameText"
+                                   VerticalAlignment="Center"
+                                   FontSize="12"
+                                   TextTrimming="CharacterEllipsis"
+                                   Foreground="{StaticResource T.Muted}"
+                                   MouseLeftButtonUp="Name_Click"/>
+                        <!-- Поле ввода поверх имени: отдельное окно-диалог для
+                             переименования было бы тяжелее самой задачи. -->
+                        <TextBox x:Name="RenameBox" Visibility="Collapsed"
+                                 FontSize="12"
+                                 KeyDown="RenameBox_KeyDown"
+                                 LostFocus="RenameBox_LostFocus"/>
+                    </Grid>
+
+                    <TextBlock x:Name="Badge" Grid.Column="2" Style="{StaticResource GroupBadge}"/>
+
+                    <Button Grid.Column="3" Content="✕"
+                            Style="{StaticResource CloseTabButton}"
+                            Click="CloseGroup_Click"
+                            ToolTip="Закрыть все вкладки группы"/>
+                </Grid>
+
+                <ItemsControl x:Name="TabsItems"
+                              HorizontalContentAlignment="Stretch"
+                              PreviewMouseLeftButtonDown="Tab_PreviewMouseDown"
+                              PreviewMouseRightButtonDown="Tab_PreviewMouseRightButtonDown"
+                              PreviewMouseMove="Tab_PreviewMouseMove">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Margin="4,1,4,1" Padding="8,5"
+                                    Cursor="Hand" CornerRadius="6"
+                                    BorderThickness="0,0,0,2"
+                                    MouseLeftButtonUp="Tab_Click">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Background" Value="Transparent"/>
+                                        <Setter Property="BorderBrush" Value="Transparent"/>
+                                        <Style.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background" Value="{StaticResource B.Hover}"/>
+                                            </Trigger>
+                                            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                <Setter Property="Background" Value="{StaticResource B.Content}"/>
+                                                <Setter Property="BorderBrush" Value="{StaticResource T.Accent}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Content="✕"
+                                            Style="{StaticResource CloseTabButton}"
+                                            Click="Close_Click"
+                                            ToolTip="Закрыть вкладку"/>
+                                    <TextBlock Text="{Binding Title}"
+                                               VerticalAlignment="Center"
+                                               FontSize="12"
+                                               TextTrimming="CharacterEllipsis">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="{StaticResource T.Muted}"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                        <Setter Property="Foreground" Value="{StaticResource T.Primary}"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </DockPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </DockPanel>
+
+            <!-- Свёрнутая группа: имя вертикально и счётчик -->
+            <StackPanel x:Name="CollapsedPanel"
+                        Grid.Column="1"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Center"
+                        Visibility="Collapsed">
+                <TextBlock x:Name="VerticalName"
+                           FontSize="12"
+                           RenderTransformOrigin="0,0"
+                           Margin="0,2,0,0"
+                           Foreground="{StaticResource T.Muted}">
+                    <TextBlock.RenderTransform>
+                        <RotateTransform Angle="270"/>
+                    </TextBlock.RenderTransform>
+                </TextBlock>
+                <TextBlock x:Name="CollapsedBadge" Style="{StaticResource GroupBadge}"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</UserControl>

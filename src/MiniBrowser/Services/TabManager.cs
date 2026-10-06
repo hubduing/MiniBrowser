@@ -5,7 +5,11 @@ using MiniBrowser.Views;
 
 namespace MiniBrowser.Services;
 
-/// <summary>Управляет жизненным циклом вкладок: создание, закрытие, активация, усыпление.</summary>
+/// <summary>
+/// Управляет жизненным циклом вкладок: создание, закрытие, активация, усыпление.
+/// Состав и порядок групп лежат в <see cref="TabGroups"/> — здесь только
+/// представления (WebView2) и всё, что с ними связано.
+/// </summary>
 public sealed class TabManager
 {
     private readonly Panel _contentHost;
@@ -17,11 +21,18 @@ public sealed class TabManager
     // список живут в AdBlockService, а вкладкам нужно только решение по запросу.
     private readonly Func<Uri, string?, bool>? _isBlocked;
     private readonly Func<string?, string>? _cosmeticScriptProvider;
-    private readonly List<Tab> _tabs = new();
     private readonly Dictionary<Tab, BrowserTabView> _views = new();
     private readonly TabSleeper _sleeper;
+    // Состав групп меняется разом при восстановлении сессии, поэтому поле
+    // пересоздаётся, а подписки на него навешиваются заново.
+    private TabGroups _groups = new();
 
     public event Action? TabsChanged;
+    public event Action? GroupsChanged;
+
+    /// <summary>Раскладка изменилась — окно вправе записать сессию на диск.</summary>
+    public event Action? SessionDirty;
+
     public event Action<Tab>? ActiveTabChanged;
     public event Action<Tab, string>? Navigated;
     public event Action<Tab>? StateChanged;
@@ -29,11 +40,16 @@ public sealed class TabManager
     /// <summary>Активная вкладка: страница вошла/вышла из HTML5-полноэкранного режима.</summary>
     public event Action<bool>? ActiveViewFullscreenChanged;
 
-    public IReadOnlyList<Tab> Tabs => _tabs;
+    public IReadOnlyList<TabGroup> Groups => _groups.Groups;
+    public TabGroup? ActiveGroup => _groups.ActiveGroup;
+    public IReadOnlyList<Tab> Tabs => _groups.Tabs;
     public Tab? ActiveTab { get; private set; }
 
     public BrowserTabView? ActiveView =>
         ActiveTab is null ? null : _views.GetValueOrDefault(ActiveTab);
+
+    /// <summary>Вкладка жива: та же, что лежит в группах. Нужна источнику перетаскивания.</summary>
+    public bool Contains(Tab tab) => _groups.Tabs.Contains(tab);
 
     public TabManager(
         Panel contentHost,
@@ -49,31 +65,16 @@ public sealed class TabManager
         _zoomProvider = zoomProvider ?? throw new ArgumentNullException(nameof(zoomProvider));
         _isBlocked = isBlocked;
         _cosmeticScriptProvider = cosmeticScriptProvider;
+        AttachGroups(_groups);
         _sleeper = new TabSleeper(this);
         _sleeper.Start();
     }
 
-    public Tab NewTab(string? url = null)
+    public Tab NewTab(string? url = null, TabGroup? group = null)
     {
         var tab = new Tab();
-        var view = new BrowserTabView(tab, _actions, _zoomProvider, _isBlocked, _cosmeticScriptProvider);
-
-        view.Navigated += HandleNavigated;
-        view.StateChanged += t => StateChanged?.Invoke(t);
-        view.NewWindowRequested += (_, newUrl) => NewTab(newUrl);
-        view.FullscreenChanged += (_, isFullscreen) =>
-        {
-            // Реакция только на активную вкладку: полноэкранный фон в спящей
-            // вкладке не должен дёргать окно.
-            if (tab.IsActive) ActiveViewFullscreenChanged?.Invoke(isFullscreen);
-        };
-
-        _views[tab] = view;
-        _tabs.Add(tab);
-        _contentHost.Children.Add(view);
-        view.Visibility = Visibility.Collapsed;
-
-        TabsChanged?.Invoke();
+        CreateView(tab);
+        _groups.AddTab(group, tab);
         ActivateTab(tab);
 
         if (!string.IsNullOrWhiteSpace(url))
@@ -82,63 +83,99 @@ public sealed class TabManager
         return tab;
     }
 
+    /// <summary>Создать группу. Имя и цвет подставляются, если их не задали.</summary>
+    public TabGroup CreateGroup(string? name = null, int? colorIndex = null) =>
+        _groups.CreateGroup(name, colorIndex);
+
+    public void RenameGroup(TabGroup group, string name) => group.Name = name;
+
+    public void SetGroupColor(TabGroup group, int colorIndex) =>
+        group.ColorIndex = Math.Clamp(colorIndex, 0, TabGroups.PaletteSize - 1);
+
+    public void ToggleGroupCollapsed(TabGroup group) => group.IsCollapsed = !group.IsCollapsed;
+
+    public void MoveTab(Tab tab, TabGroup target, int index) => _groups.MoveTab(tab, target, index);
+
+    public void MoveGroup(TabGroup group, int newIndex) => _groups.MoveGroup(group, newIndex);
+
     public void ActivateTab(Tab tab)
     {
-        if (ActiveTab == tab || !_views.ContainsKey(tab)) return;
+        if (!_views.ContainsKey(tab)) return;
+        // Уже активная вкладка: состояние и так верное, второй раз событий не нужно.
+        if (ActiveTab == tab) return;
 
-        if (ActiveTab is { } previous)
-        {
-            previous.IsActive = false;
-            previous.DeactivatedAt = DateTime.UtcNow;
-            if (_views.TryGetValue(previous, out var prevView))
-                prevView.Visibility = Visibility.Collapsed;
-        }
-
-        tab.IsActive = true;
-        tab.DeactivatedAt = null;
-        _views[tab].Visibility = Visibility.Visible;
-
-        // Вкладку вернули из сна — перезагружаем страницу
-        if (tab.IsAsleep && !string.IsNullOrWhiteSpace(tab.Url))
-            _ = Navigate(tab, tab.Url);
-
-        ActiveTab = tab;
-        ActiveTabChanged?.Invoke(tab);
-
-        // Панели скрыты, вкладки переключаются только хоткеями — сообщаем хосту
-        // реальное состояние новой активной вкладки, иначе окно осталось бы
-        // без рамки из-за полноэкранного видео на покинутой вкладке.
-        ActiveViewFullscreenChanged?.Invoke(_views[tab].IsPageFullscreen);
+        _groups.SetActive(tab);
+        OnActiveTabSet(tab);
     }
 
     public void CloseTab(Tab tab)
     {
-        var index = _tabs.IndexOf(tab);
-        if (index < 0) return;
+        var group = _groups.GroupOf(tab);
+        if (group is null) return;
 
         var wasActive = ActiveTab == tab;
+        // Следующую вкладку выбираем ДО удаления, иначе индексы уедут.
+        Tab? next = null;
+        if (wasActive)
+        {
+            var at = group.Tabs.IndexOf(tab);
+            next = at > 0 ? group.Tabs[at - 1] : group.Tabs.ElementAtOrDefault(at + 1);
+            next ??= _groups.Tabs.FirstOrDefault(t => t != tab);
+            // Активируем заранее: тогда RemoveTab не поднимет лишнего события.
+            if (next is not null) _groups.SetActive(next);
+        }
 
-        _tabs.RemoveAt(index);
         if (_views.Remove(tab, out var view))
         {
             _contentHost.Children.Remove(view);
             view.Shutdown();
         }
 
-        if (!wasActive)
+        // Группа остаётся: пустая группа — законная заготовка.
+        _groups.RemoveTab(tab);
+
+        if (wasActive && next is null)
+            OnActiveTabSet(null!);
+    }
+
+    /// <summary>Закрыть все вкладки группы и саму группу.</summary>
+    public void CloseGroup(TabGroup group)
+    {
+        // Снимок: коллекция меняется прямо во время закрытия.
+        foreach (var tab in group.Tabs.ToArray())
+            CloseTab(tab);
+
+        _groups.RemoveGroup(group);
+    }
+
+    /// <summary>
+    /// Поднять восстановленную раскладку. Движки WebView2 не создаются: вкладка
+    /// списка без движка — норма, он поднимется при первой активации.
+    /// </summary>
+    public void RestoreGroups(IReadOnlyList<TabGroup> groups, Tab? activeTab)
+    {
+        AttachGroups(new TabGroups(groups));
+        foreach (var group in groups)
         {
-            TabsChanged?.Invoke();
-            return;
+            foreach (var tab in group.Tabs)
+                CreateView(tab);
         }
 
-        ActiveTab = null;
-        if (_tabs.Count > 0)
+        var target = activeTab is not null && _views.ContainsKey(activeTab)
+            ? activeTab
+            : _groups.Tabs.FirstOrDefault();
+
+        if (target is not null)
         {
-            var next = _tabs[Math.Min(index, _tabs.Count - 1)];
-            ActivateTab(next);
+            ActivateTab(target);
+            // Страницу восстанавливаем только у активной: остальные вкладки
+            // поднимут свой движок и адрес сами, когда пользователь на них придёт.
+            if (!string.IsNullOrWhiteSpace(target.Url))
+                _ = Navigate(target, target.Url);
         }
 
         TabsChanged?.Invoke();
+        GroupsChanged?.Invoke();
     }
 
     public Task Navigate(Tab tab, string url)
@@ -216,8 +253,82 @@ public sealed class TabManager
         foreach (var view in _views.Values)
             view.Shutdown();
         _views.Clear();
-        _tabs.Clear();
+        _groups.Clear();
         _contentHost.Children.Clear();
+    }
+
+    private void CreateView(Tab tab)
+    {
+        var view = new BrowserTabView(tab, _actions, _zoomProvider, _isBlocked, _cosmeticScriptProvider);
+
+        view.Navigated += HandleNavigated;
+        view.StateChanged += t => StateChanged?.Invoke(t);
+        view.NewWindowRequested += (_, newUrl) => NewTab(newUrl);
+        view.FullscreenChanged += (_, isFullscreen) =>
+        {
+            // Реакция только на активную вкладку: полноэкранный фон в спящей
+            // вкладке не должен дёргать окно.
+            if (tab.IsActive) ActiveViewFullscreenChanged?.Invoke(isFullscreen);
+        };
+
+        _views[tab] = view;
+        _contentHost.Children.Add(view);
+        view.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>Перехватить события нового набора групп.</summary>
+    private void AttachGroups(TabGroups groups)
+    {
+        _groups = groups;
+        _groups.Changed += () =>
+        {
+            TabsChanged?.Invoke();
+            SessionDirty?.Invoke();
+        };
+        _groups.GroupsChanged += () =>
+        {
+            GroupsChanged?.Invoke();
+            TabsChanged?.Invoke();
+            SessionDirty?.Invoke();
+        };
+        _groups.ActiveChanged += OnActiveTabSet;
+    }
+
+    /// <summary>
+    /// Единственная точка смены активной вкладки: и клик по вкладке, и
+    /// внутренняя логика TabGroups приходят сюда.
+    /// </summary>
+    private void OnActiveTabSet(Tab? tab)
+    {
+        if (ReferenceEquals(ActiveTab, tab)) return;
+
+        if (ActiveTab is { } previous)
+        {
+            previous.IsActive = false;
+            previous.DeactivatedAt = DateTime.UtcNow;
+            if (_views.TryGetValue(previous, out var prevView))
+                prevView.Visibility = Visibility.Collapsed;
+        }
+
+        ActiveTab = tab;
+        if (tab is not null)
+        {
+            tab.DeactivatedAt = null;
+            if (_views.TryGetValue(tab, out var view))
+            {
+                view.Visibility = Visibility.Visible;
+                // Вкладку вернули из сна — перезагружаем страницу
+                if (tab.IsAsleep && !string.IsNullOrWhiteSpace(tab.Url))
+                    _ = Navigate(tab, tab.Url);
+            }
+        }
+
+        if (tab is not null) ActiveTabChanged?.Invoke(tab);
+
+        // Панели скрыты, вкладки переключаются только хоткеями — сообщаем хосту
+        // реальное состояние новой активной вкладки, иначе окно осталось бы
+        // без рамки из-за полноэкранного видео на покинутой вкладке.
+        ActiveViewFullscreenChanged?.Invoke(ActiveView?.IsPageFullscreen ?? false);
     }
 
     private void HandleNavigated(Tab tab, string url)

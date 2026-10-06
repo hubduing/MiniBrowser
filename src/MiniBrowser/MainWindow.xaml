@@ -20,26 +20,42 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <views:TabStripView x:Name="TabStrip" Grid.Row="0"/>
         <views:ToolbarView x:Name="Toolbar" Grid.Row="1"/>
 
-        <!-- Контейнер содержимого: по одному BrowserTabView на вкладку -->
-        <Grid x:Name="ContentHost" Grid.Row="2" Background="{StaticResource B.Content}" SizeChanged="ContentHost_SizeChanged"/>
+        <!-- Полоса вкладок уехала влево: группы вертикальными колонками.
+             Колонка 0 — сама полоса (ширину тянет ручка в колонке 1),
+             колонка 2 — содержимое. -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
 
-        <!-- Панель меню — Popup, а не Grid в дереве окна: WebView2 живёт в отдельном
-             дочернем HWND и рисуется поверх ЛЮБОГО WPF-содержимого того же окна
-             (airspace), поэтому Grid-оверлей страницу не перекрыл бы — проверено:
-             панель 360px с завершённой анимацией на скриншоте не видна. Popup —
-             отдельное окно поверх, дочерний HWND его не закрывает: так же устроено
-             старое контекстное меню, и оно поверх страницы работало. -->
-        <Popup x:Name="DrawerPopup"
-               PlacementTarget="{Binding ElementName=ContentHost}"
-               Placement="Relative" HorizontalOffset="0" VerticalOffset="0"
-               AllowsTransparency="True" StaysOpen="True" PopupAnimation="None"
-               Focusable="False">
-            <views:MenuDrawerView x:Name="Drawer"
-                                   CloseRequested="Drawer_CloseRequested"/>
-        </Popup>
+            <!-- Ширину полосы ставит код: она тянется мышью и сохраняется в настройках. -->
+            <views:TabStripView x:Name="TabStrip" Grid.Column="0" MinWidth="150" MaxWidth="420"/>
+
+            <Thumb x:Name="StripThumb" Grid.Column="1"
+                   Style="{StaticResource SplitThumb}"/>
+
+            <!-- Контейнер содержимого: по одному BrowserTabView на вкладку -->
+            <Grid x:Name="ContentHost" Grid.Column="2" Background="{StaticResource B.Content}" SizeChanged="ContentHost_SizeChanged"/>
+
+            <!-- Панель меню — Popup, а не Grid в дереве окна: WebView2 живёт в отдельном
+                 дочернем HWND и рисуется поверх ЛЮБОГО WPF-содержимого того же окна
+                 (airspace), поэтому Grid-оверлей страницу не перекрыл бы — проверено:
+                 панель 360px с завершённой анимацией на скриншоте не видна. Popup —
+                 отдельное окно поверх, дочерний HWND его не закрывает: так же устроено
+                 старое контекстное меню, и оно поверх страницы работало. -->
+            <Popup x:Name="DrawerPopup"
+                   PlacementTarget="{Binding ElementName=ContentHost}"
+                   Placement="Relative" HorizontalOffset="0" VerticalOffset="0"
+                   AllowsTransparency="True" StaysOpen="True" PopupAnimation="None"
+                   Focusable="False">
+                <views:MenuDrawerView x:Name="Drawer"
+                                       CloseRequested="Drawer_CloseRequested"/>
+            </Popup>
+        </Grid>
 
         <Border x:Name="StatusBarBorder" Grid.Row="3" Background="{StaticResource B.Status}" BorderBrush="{StaticResource B.Border}"
                 BorderThickness="0,1,0,0" Padding="10,4">

@@ -18,6 +18,18 @@
         <SolidColorBrush x:Key="T.Muted"    Color="#FF9A9AA6"/>
         <SolidColorBrush x:Key="T.Accent"   Color="#FF6EA8F8"/>
 
+        <!-- ==== Палитра групп вкладок ====
+             Восемь различимых на тёмном фоне цветов, ни один не совпадает с
+             акцентом: цвет метки группы не должен читаться как состояние. -->
+        <SolidColorBrush x:Key="GroupColor0" Color="#FF7A5C8E"/>
+        <SolidColorBrush x:Key="GroupColor1" Color="#FF4C8D7B"/>
+        <SolidColorBrush x:Key="GroupColor2" Color="#FF8A6D3B"/>
+        <SolidColorBrush x:Key="GroupColor3" Color="#FF5B7FB0"/>
+        <SolidColorBrush x:Key="GroupColor4" Color="#FFA85B5B"/>
+        <SolidColorBrush x:Key="GroupColor5" Color="#FF6F8F3F"/>
+        <SolidColorBrush x:Key="GroupColor6" Color="#FF8C5B8E"/>
+        <SolidColorBrush x:Key="GroupColor7" Color="#FF4E7C96"/>
+
         <!-- ==== Плоская кнопка панели инструментов ==== -->
         <Style x:Key="FlatToolButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
@@ -305,6 +317,48 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Separator">
                         <Border Height="1" Background="{StaticResource B.Border}" Margin="7,5"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ==== Полоса групп вкладок: колонка, заголовок, ручка ширины ==== -->
+
+        <Style x:Key="GroupColumnSurface" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource B.TabIdle}"/>
+            <Setter Property="CornerRadius" Value="7"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+        </Style>
+
+        <Style x:Key="GroupHeaderButton" TargetType="Button" BasedOn="{StaticResource FlatToolButton}">
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="MinWidth" Value="18"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="FontSize" Value="11"/>
+        </Style>
+
+        <Style x:Key="GroupBadge" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource T.Muted}"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+        </Style>
+
+        <!-- Ручка ширины полосы: без подсветки её почти не видно, а тянуть
+             невидимую границу неудобно. -->
+        <Style x:Key="SplitThumb" TargetType="Thumb">
+            <Setter Property="Width" Value="4"/>
+            <Setter Property="Cursor" Value="SizeWE"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Border x:Name="Bd" Background="Transparent" SnapsToDevicePixels="True"/>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource T.Accent}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
