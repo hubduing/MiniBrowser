@@ -54,4 +54,7 @@ public sealed class PasswordStore
 
     /// <summary>Удалить пароль. false — записи не было.</summary>
     public bool Delete(int id) => _storage.DeletePassword(id);
+
+    /// <summary>Удалить все пароли из хранилища.</summary>
+    public void ClearAll() => _storage.ClearPasswords();
 }

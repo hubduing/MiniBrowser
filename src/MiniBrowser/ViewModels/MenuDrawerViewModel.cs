@@ -98,6 +98,18 @@ public sealed class MenuDrawerViewModel : INotifyPropertyChanged
             RefreshHistory();
             HistoryChanged?.Invoke();
         });
+        ClearBookmarksCommand = new RelayCommand(() =>
+        {
+            _storage.ClearBookmarks();
+            SearchText = string.Empty;
+            RefreshBookmarks();
+        });
+        ClearPasswordsCommand = new RelayCommand(() =>
+        {
+            _passwords.ClearAll();
+            SearchText = string.Empty;
+            RefreshPasswords();
+        });
         ResetSettingsCommand = new RelayCommand(() =>
         {
             SettingsService.ResetToDefaults(_settings.Current);
@@ -154,6 +166,8 @@ public sealed class MenuDrawerViewModel : INotifyPropertyChanged
     /// <summary>Удалить пароль из хранилища.</summary>
     public ICommand DeletePasswordCommand { get; }
     public ICommand ClearHistoryCommand { get; }
+    public ICommand ClearBookmarksCommand { get; }
+    public ICommand ClearPasswordsCommand { get; }
     public ICommand ResetSettingsCommand { get; }
     public ICommand ClearSearchCommand { get; }
     public ICommand SetWindowSizeCommand { get; }

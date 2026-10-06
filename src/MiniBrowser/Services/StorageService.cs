@@ -217,6 +217,26 @@ public sealed class StorageService : IDisposable
         catch { }
     }
 
+    public void ClearBookmarks()
+    {
+        if (_connection is null) return;
+        try
+        {
+            Exec("DELETE FROM bookmarks;");
+        }
+        catch { }
+    }
+
+    public void ClearPasswords()
+    {
+        if (_connection is null) return;
+        try
+        {
+            Exec("DELETE FROM passwords;");
+        }
+        catch { }
+    }
+
     public List<Bookmark> GetBookmarks(int limit = 12)
     {
         var result = new List<Bookmark>();

@@ -52,6 +52,9 @@
                             <TextBlock DockPanel.Dock="Bottom" Margin="0,8,0,0" FontSize="11"
                                        Foreground="{StaticResource T.Muted}"
                                        Text="{Binding BookmarksCountText}"/>
+                            <Button DockPanel.Dock="Bottom" Content="Удалить все закладки" Margin="0,8,0,0"
+                                    HorizontalAlignment="Left" Style="{StaticResource FlatToolButton}"
+                                    Command="{Binding ClearBookmarksCommand}"/>
                             <Grid>
                                 <ListBox x:Name="BookmarksList" Style="{StaticResource DrawerListBox}"
                                          ItemContainerStyle="{StaticResource DrawerListBoxItem}"
@@ -123,6 +126,9 @@
                             <TextBlock DockPanel.Dock="Bottom" Margin="0,8,0,0" FontSize="11"
                                        Foreground="{StaticResource T.Muted}"
                                        Text="{Binding PasswordsCountText}"/>
+                            <Button DockPanel.Dock="Bottom" Content="Удалить все пароли" Margin="0,8,0,0"
+                                    HorizontalAlignment="Left" Style="{StaticResource FlatToolButton}"
+                                    Command="{Binding ClearPasswordsCommand}"/>
                             <Grid>
                                 <ListBox x:Name="PasswordsList" Style="{StaticResource DrawerListBox}"
                                          ItemContainerStyle="{StaticResource DrawerListBoxItem}"
