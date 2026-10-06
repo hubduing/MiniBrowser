@@ -11,7 +11,19 @@ public sealed class Tab : INotifyPropertyChanged
     private bool _isAsleep;
     private bool _isLoading;
 
-    public Guid Id { get; } = Guid.NewGuid();
+    public Tab() : this(Guid.NewGuid()) { }
+
+    /// <summary>Вкладка с готовым идентификатором — для восстановления из сессии.</summary>
+    public Tab(Guid id) => Id = id;
+
+    public Guid Id { get; }
+
+    /// <summary>
+    /// Идентификатор группы, которой принадлежит вкладка. Сама принадлежность
+    /// выражена тем, в чьей коллекции <see cref="TabGroup.Tabs"/> лежит объект,
+    /// это поле нужно только для поиска группы по вкладке.
+    /// </summary>
+    public Guid GroupId { get; set; }
 
     public string Title
     {
