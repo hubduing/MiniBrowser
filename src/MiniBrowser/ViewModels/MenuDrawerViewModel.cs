@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Windows.Data;
 using System.Windows.Input;
+using MiniBrowser.Models;
 using MiniBrowser.Services;
 
 namespace MiniBrowser.ViewModels;
@@ -20,8 +21,11 @@ public sealed class MenuDrawerViewModel : INotifyPropertyChanged
     // панели не нужен: правила фильтров её не касаются, нужен только счётчик
     // и умение очистить список. Заодно он чинит null из старого settings.json.
     private readonly AdBlockService _adBlock;
+    // Пароли — тонкая обёртка над той же БД; строится здесь, чтобы не менять сигнатуру VM.
+    private readonly PasswordStore _passwords;
     private readonly ICollectionView _bookmarkView;
     private readonly ICollectionView _historyView;
+    private readonly ICollectionView _passwordView;
 
     private string _searchText = string.Empty;
 
@@ -35,12 +39,14 @@ public sealed class MenuDrawerViewModel : INotifyPropertyChanged
 
     public ObservableCollection<BookmarkItem> Bookmarks { get; } = new();
     public ObservableCollection<HistoryItem> History { get; } = new();
+    public ObservableCollection<PasswordItem> Passwords { get; } = new();
 
     public MenuDrawerViewModel(StorageService storage, SettingsService settings)
     {
         _storage = storage;
         _settings = settings;
         _adBlock = new AdBlockService(_settings.Current);
+        _passwords = new PasswordStore(storage);
 
         // Фильтрация — только здесь: коллекции всегда хранят полные данные,
         // а счётчики читают представление. Второй механизм (предфильтр коллекции)
@@ -49,6 +55,8 @@ public sealed class MenuDrawerViewModel : INotifyPropertyChanged
         _bookmarkView.Filter = new Predicate<object>(BookmarkFilter);
         _historyView = CollectionViewSource.GetDefaultView(History);
         _historyView.Filter = new Predicate<object>(HistoryFilter);
+        _passwordView = CollectionViewSource.GetDefaultView(Passwords);
+        _passwordView.Filter = new Predicate<object>(PasswordFilter);
 
         OpenUrlCommand = new RelayCommand(p =>
         {
@@ -65,6 +73,22 @@ public sealed class MenuDrawerViewModel : INotifyPropertyChanged
             // Удаление отдельной записи истории не поддерживается: в истории
             // хранятся посещения, а не закладки пользователя, — только ClearHistory.
             p => p is BookmarkItem);
+        RevealPasswordCommand = new RelayCommand(p =>
+        {
+            if (p is not PasswordItem item) return;
+            // Секрет расшифровывается один раз и только по явному запросу.
+            if (!item.IsRevealed && item.Secret.Length == 0)
+                item.Secret = _passwords.GetSecret(item.Id);
+            item.IsRevealed = !item.IsRevealed;
+        });
+        DeletePasswordCommand = new RelayCommand(
+            p =>
+            {
+                if (p is not PasswordItem item) return;
+                _passwords.Delete(item.Id);
+                if (Passwords.Remove(item)) UpdateCounts();
+            },
+            p => p is PasswordItem);
         ClearHistoryCommand = new RelayCommand(() =>
         {
             _storage.ClearHistory();
@@ -98,6 +122,7 @@ public sealed class MenuDrawerViewModel : INotifyPropertyChanged
         SetWindowSizeCommand = new RelayCommand(p => ApplyWindowSize(p as string));
 
         RefreshBookmarks();
+        RefreshPasswords();
         RefreshHistory();
     }
 
@@ -115,12 +140,19 @@ public sealed class MenuDrawerViewModel : INotifyPropertyChanged
             // нужен: хост мог добавить посещения, пока панель была скрыта.
             // Внутри каждого Refresh — Refresh() представления и пересчёт счётчиков.
             RefreshBookmarks();
+            RefreshPasswords();
             RefreshHistory();
         }
     }
 
     public ICommand OpenUrlCommand { get; }
     public ICommand DeleteItemCommand { get; }
+
+    /// <summary>Показать/скрыть пароль в строке (секрет расшифровывается при первом показе).</summary>
+    public ICommand RevealPasswordCommand { get; }
+
+    /// <summary>Удалить пароль из хранилища.</summary>
+    public ICommand DeletePasswordCommand { get; }
     public ICommand ClearHistoryCommand { get; }
     public ICommand ResetSettingsCommand { get; }
     public ICommand ClearSearchCommand { get; }
@@ -174,17 +206,27 @@ public sealed class MenuDrawerViewModel : INotifyPropertyChanged
         ? $"{VisibleCount(_historyView)} из {History.Count}"
         : $"{History.Count}";
 
+    public string PasswordsCountText => IsSearching
+        ? $"{VisibleCount(_passwordView)} из {Passwords.Count}"
+        : $"{Passwords.Count}";
+
     /// <summary>В списке вообще есть данные (без учёта поиска).</summary>
     public bool HasBookmarks => Bookmarks.Count > 0;
 
     /// <summary>В списке вообще есть данные (без учёта поиска).</summary>
     public bool HasHistory => History.Count > 0;
 
+    /// <summary>В списке вообще есть данные (без учёта поиска).</summary>
+    public bool HasPasswords => Passwords.Count > 0;
+
     /// <summary>Поиск активен, но закладок не найдено — показать «ничего не найдено», а не «пусто».</summary>
     public bool BookmarksNoResults => IsSearching && _bookmarkView.IsEmpty;
 
     /// <summary>Поиск активен, но истории не найдено — показать «ничего не найдено», а не «пусто».</summary>
     public bool HistoryNoResults => IsSearching && _historyView.IsEmpty;
+
+    /// <summary>Поиск активен, но паролей не найдено — показать «ничего не найдено», а не «пусто».</summary>
+    public bool PasswordsNoResults => IsSearching && _passwordView.IsEmpty;
 
     /// <summary>Перечитать закладки: хост зовёт при возврате к вкладке.</summary>
     public void RefreshBookmarks()
@@ -215,20 +257,44 @@ public sealed class MenuDrawerViewModel : INotifyPropertyChanged
         UpdateCounts();
     }
 
+    /// <summary>Перечитать пароли: хост зовёт при возврате к вкладке и после импорта.</summary>
+    public void RefreshPasswords()
+    {
+        var all = _passwords.GetAll();
+        // Как и закладки: только Clear + Add, иначе представление потеряет источник.
+        Passwords.Clear();
+        foreach (var p in all)
+            Passwords.Add(new PasswordItem(p.Id, p.Host, p.Username));
+        _passwordView.Refresh();
+        UpdateCounts();
+    }
+
+    /// <summary>Расшифровать секрет строки (для копирования); бережно лениво, один раз.</summary>
+    public string GetPasswordSecret(PasswordItem item)
+    {
+        if (item.Secret.Length == 0) item.Secret = _passwords.GetSecret(item.Id);
+        return item.Secret;
+    }
+
     private void UpdateCounts()
     {
         OnPropertyChanged(nameof(IsSearching));
         OnPropertyChanged(nameof(BookmarksCountText));
         OnPropertyChanged(nameof(HistoryCountText));
+        OnPropertyChanged(nameof(PasswordsCountText));
         OnPropertyChanged(nameof(HasBookmarks));
         OnPropertyChanged(nameof(HasHistory));
+        OnPropertyChanged(nameof(HasPasswords));
         OnPropertyChanged(nameof(BookmarksNoResults));
         OnPropertyChanged(nameof(HistoryNoResults));
+        OnPropertyChanged(nameof(PasswordsNoResults));
     }
 
     private bool BookmarkFilter(object item) => item is BookmarkItem b && Matches(b.Title, b.Url);
 
     private bool HistoryFilter(object item) => item is HistoryItem h && Matches(h.Title, h.Url);
+
+    private bool PasswordFilter(object item) => item is PasswordItem p && Matches(p.Host, p.Username);
 
     private bool Matches(string title, string url)
     {

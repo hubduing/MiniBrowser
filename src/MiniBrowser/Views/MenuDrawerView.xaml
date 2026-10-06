@@ -106,6 +106,89 @@
                         </DockPanel>
                     </TabItem>
 
+                    <TabItem Header="Пароли" Style="{StaticResource DrawerTabItem}">
+                        <DockPanel LastChildFill="True">
+                            <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0" Style="{StaticResource AddressBox}" AutomationProperties.AutomationId="DrawerSearchBox"
+                                         ToolTip="Поиск по закладкам, паролям и истории"
+                                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"/>
+                                <Button Grid.Column="1" Content="✕" Margin="6,0,0,0"
+                                        Style="{StaticResource FlatToolButton}" ToolTip="Очистить поиск"
+                                        Command="{Binding ClearSearchCommand}"/>
+                            </Grid>
+                            <TextBlock DockPanel.Dock="Bottom" Margin="0,8,0,0" FontSize="11"
+                                       Foreground="{StaticResource T.Muted}"
+                                       Text="{Binding PasswordsCountText}"/>
+                            <Grid>
+                                <ListBox x:Name="PasswordsList" Style="{StaticResource DrawerListBox}"
+                                         ItemContainerStyle="{StaticResource DrawerListBoxItem}"
+                                         ItemsSource="{Binding Passwords}">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <!-- Пароль замаскирован; 👁 показывает, ⧉ копирует, ✕ удаляет. -->
+                                            <DockPanel LastChildFill="True" Margin="2">
+                                                <Button DockPanel.Dock="Right" Content="✕" VerticalAlignment="Center"
+                                                        Style="{StaticResource FlatToolButton}"
+                                                        ToolTip="Удалить пароль"
+                                                        Command="{Binding DataContext.DeletePasswordCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                        CommandParameter="{Binding}"/>
+                                                <Button DockPanel.Dock="Right" Content="⧉" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                        Style="{StaticResource FlatToolButton}"
+                                                        ToolTip="Скопировать пароль"
+                                                        Click="CopyPassword_Click"/>
+                                                <Button DockPanel.Dock="Right" Content="👁" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                        Style="{StaticResource FlatToolButton}"
+                                                        ToolTip="Показать или скрыть пароль"
+                                                        Command="{Binding DataContext.RevealPasswordCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                        CommandParameter="{Binding}"/>
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Host}" FontSize="13"
+                                                               Foreground="{StaticResource T.Primary}"
+                                                               TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="{Binding Username}" FontSize="11"
+                                                                   Foreground="{StaticResource T.Muted}"
+                                                                   TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+                                                        <TextBlock Text="{Binding DisplaySecret}" FontSize="11" Margin="8,0,0,0"
+                                                                   Foreground="{StaticResource T.Accent}"
+                                                                   TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </DockPanel>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                                <TextBlock Text="Ничего не найдено" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           FontSize="13" Foreground="{StaticResource T.Muted}" IsHitTestVisible="False"
+                                           Visibility="{Binding PasswordsNoResults, Converter={StaticResource BoolToVis}}">
+                                </TextBlock>
+                                <TextBlock Text="Паролей пока нет. Импортируйте их из другого браузера в настройках."
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap"
+                                           Margin="16,0" TextAlignment="Center"
+                                           FontSize="13" Foreground="{StaticResource T.Muted}" IsHitTestVisible="False">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <MultiDataTrigger>
+                                                    <MultiDataTrigger.Conditions>
+                                                        <Condition Binding="{Binding HasPasswords}" Value="False"/>
+                                                        <Condition Binding="{Binding PasswordsNoResults}" Value="False"/>
+                                                    </MultiDataTrigger.Conditions>
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </MultiDataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
+                        </DockPanel>
+                    </TabItem>
+
                     <TabItem Header="История" Style="{StaticResource DrawerTabItem}">
                         <DockPanel LastChildFill="True">
                             <Grid DockPanel.Dock="Top" Margin="0,0,0,8">

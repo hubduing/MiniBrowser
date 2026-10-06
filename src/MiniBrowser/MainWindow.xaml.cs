@@ -401,6 +401,7 @@ public partial class MainWindow : Window, IBrowserActions
             // Списки могли устареть, пока панель была скрыта (закладка по Ctrl+D,
             // визиты в историю): перечитываем перед показом, иначе панель врёт.
             _drawerVm.RefreshBookmarks();
+            _drawerVm.RefreshPasswords();
             _drawerVm.RefreshHistory();
             _menuOpen = true;
             SyncDrawerSize();
@@ -437,7 +438,7 @@ public partial class MainWindow : Window, IBrowserActions
     private void Drawer_CloseRequested() => SetMenuOpen(false);
 
     void IBrowserActions.ToggleMenu() => SetMenuOpen(!_menuOpen);
-    void IBrowserActions.ShowHistory() { _drawerVm.ClearSearchCommand.Execute(null); Drawer.SelectTab(1); SetMenuOpen(true); }
+    void IBrowserActions.ShowHistory() { _drawerVm.ClearSearchCommand.Execute(null); Drawer.SelectTab(2); SetMenuOpen(true); }
     void IBrowserActions.ShowBookmarks() { _drawerVm.ClearSearchCommand.Execute(null); Drawer.SelectTab(0); SetMenuOpen(true); }
 
     /// <summary>Импорт данных из чужого браузера — диалог из настроек панели меню.</summary>
@@ -448,6 +449,8 @@ public partial class MainWindow : Window, IBrowserActions
             Owner = this,
         };
         dialog.ShowDialog();
+        // Импорт мог добавить пароли — панель открыта за диалогом, освежаем список.
+        _drawerVm.RefreshPasswords();
     }
     bool IBrowserActions.IsMenuOpen => _menuOpen;
 

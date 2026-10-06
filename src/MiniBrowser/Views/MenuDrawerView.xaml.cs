@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using MiniBrowser.Models;
 using MiniBrowser.Services;
 using MiniBrowser.ViewModels;
 
@@ -77,8 +78,8 @@ public partial class MenuDrawerView : UserControl
         if (open) SyncCombos();
     }
 
-    /// <summary>0 — закладки, 1 — история, 2 — настройки. Хост зовёт из ShowBookmarks/ShowHistory.</summary>
-    public void SelectTab(int index) => Tabs.SelectedIndex = Math.Clamp(index, 0, 2);
+    /// <summary>0 — закладки, 1 — пароли, 2 — история, 3 — настройки. Хост зовёт из ShowBookmarks/ShowHistory.</summary>
+    public void SelectTab(int index) => Tabs.SelectedIndex = Math.Clamp(index, 0, 3);
 
     private void Panel_Close_Click(object sender, RoutedEventArgs e) => CloseRequested?.Invoke();
 
@@ -100,6 +101,15 @@ public partial class MenuDrawerView : UserControl
         // Двойной клик, а не одиночный: одиночный нужен для выделения строки и кнопки удаления.
         if (sender is ListBox list && list.SelectedItem is MenuItemBase item)
             OpenUrlRequested?.Invoke(item.Url);
+    }
+
+    /// <summary>Копирование пароля в буфер: секрет запрашиваем у VM (ленивая расшифровка).</summary>
+    private void CopyPassword_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: PasswordItem item }) return;
+        if (DataContext is not MenuDrawerViewModel vm) return;
+        var secret = vm.GetPasswordSecret(item);
+        if (secret.Length > 0) Clipboard.SetText(secret);
     }
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
