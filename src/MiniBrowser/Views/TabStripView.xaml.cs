@@ -162,90 +162,54 @@ public partial class TabStripView : UserControl
         return _columns.Count;
     }
 
-    /// <summary>Меню палитры групп: восемь пунктов-цветов.</summary>
-    private ContextMenu BuildColorMenu()
-    {
-        var menu = new ContextMenu();
-        for (var i = 0; i < TabGroups.PaletteSize; i++)
-        {
-            var index = i;
-            var item = new MenuItem
-            {
-                Header = "Цвет " + (index + 1),
-                Background = (Brush)Application.Current.FindResource($"GroupColor{index}"),
-            };
-            item.Click += (_, _) => GroupColorRequested?.Invoke(_pendingColorGroup!, index);
-            menu.Items.Add(item);
-        }
-        return menu;
-    }
-
-    private TabGroup? _pendingColorGroup;
-
-    /// <summary>Меню «Переместить в группу»: список групп с галочкой на текущей.</summary>
-    private ContextMenu BuildGroupsMenu()
-    {
-        var menu = new ContextMenu();
-        menu.Opened += (_, _) =>
-        {
-            menu.Items.Clear();
-            foreach (var column in _columns)
-            {
-                var group = column.Group!;
-                var item = new MenuItem { Header = group.Name };
-                item.IsEnabled = !(column.Group is { } g && g.Tabs.Contains(_pendingMoveTab));
-                item.Click += (_, _) => TabMoveRequested?.Invoke(_pendingMoveTab!, ToPanelPoint(column, new Point(column.ActualWidth / 2, 4)));
-                menu.Items.Add(item);
-            }
-        };
-        return menu;
-    }
-
-    private Tab? _pendingMoveTab;
-
+    /// <summary>
+    /// Меню вкладки. Наполняется кодом, потому что список групп динамический.
+    /// Каждая группа — отдельный пункт, а не вложенное меню.
+    /// </summary>
     private void OnTabContextRequested(Tab tab, ContextMenu menu)
     {
-        _pendingMoveTab = tab;
-        menu.Items.Clear();
+        var groups = new List<(string Name, bool IsCurrent, int Target)>();
+        var columns = _columns;
+        for (var i = 0; i < columns.Count; i++)
+        {
+            var group = columns[i].Group;
+            if (group is null) continue;
+            groups.Add((group.Name, group.Tabs.Contains(tab), i));
+        }
 
-        var move = new MenuItem { Header = "Переместить в группу" };
-        move.Items.Add(BuildGroupsMenu());
-        menu.Items.Add(move);
+        TabContextMenuFactory.FillTabMenu(
+            menu,
+            groups,
+            target => MoveTabToColumn(tab, target),
+            () => TabCreateGroupRequested?.Invoke(tab),
+            () => TabLeaveGroupRequested?.Invoke(tab),
+            () => TabCloseRequested?.Invoke(tab));
+    }
 
-        var create = new MenuItem { Header = "Создать группу из вкладки" };
-        create.Click += (_, _) => TabCreateGroupRequested?.Invoke(tab);
-        menu.Items.Add(create);
-
-        var leave = new MenuItem { Header = "Убрать из группы" };
-        leave.Click += (_, _) => TabLeaveGroupRequested?.Invoke(tab);
-        menu.Items.Add(leave);
-
-        menu.Items.Add(new Separator());
-        var close = new MenuItem { Header = "Закрыть вкладку" };
-        close.Click += (_, _) => TabCloseRequested?.Invoke(tab);
-        menu.Items.Add(close);
+    /// <summary>Перенести вкладку в группу колонки с указанным индексом.</summary>
+    private void MoveTabToColumn(Tab tab, int columnIndex)
+    {
+        if (columnIndex < 0 || columnIndex >= _columns.Count) return;
+        if (_columns[columnIndex].Group is null) return;
+        TabMoveRequested?.Invoke(tab, ToPanelPoint(_columns[columnIndex], new Point(_columns[columnIndex].ActualWidth / 2, 4)));
     }
 
     private void OnGroupContextRequested(TabGroup group, ContextMenu menu)
     {
-        _pendingColorGroup = group;
-        menu.Items.Clear();
-
-        var rename = new MenuItem { Header = "Переименовать" };
-        rename.Click += (_, _) => GroupRenameRequested?.Invoke(group);
-        menu.Items.Add(rename);
-
-        var color = new MenuItem { Header = "Сменить цвет" };
-        color.Items.Add(BuildColorMenu());
-        menu.Items.Add(color);
-
-        var collapse = new MenuItem { Header = group.IsCollapsed ? "Развернуть" : "Свернуть" };
-        collapse.Click += (_, _) => GroupCollapseToggled?.Invoke(group);
-        menu.Items.Add(collapse);
-
-        menu.Items.Add(new Separator());
-        var close = new MenuItem { Header = "Закрыть группу" };
-        close.Click += (_, _) => GroupCloseRequested?.Invoke(group);
-        menu.Items.Add(close);
+        TabContextMenuFactory.FillGroupMenu(
+            menu,
+            group.IsCollapsed,
+            TabGroups.PaletteSize,
+            index => new Border
+            {
+                Background = (Brush)Application.Current.FindResource($"GroupColor{index}"),
+                Width = 12,
+                Height = 12,
+                CornerRadius = new CornerRadius(3),
+            },
+            () => GroupRenameRequested?.Invoke(group),
+            index => GroupColorRequested?.Invoke(group, index),
+            () => GroupCollapseToggled?.Invoke(group),
+            () => GroupCloseRequested?.Invoke(group));
     }
 }

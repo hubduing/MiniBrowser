@@ -286,25 +286,86 @@
             </Setter>
         </Style>
 
+        <!-- ==== Пункт контекстного меню ====
+             Заголовок задаётся явным TextBlock (Binding Header), чтобы длинные
+             пункты обрезались, а не растягивали меню. Ролью PART_Popup ниже
+             MenuItem показывает подменю: без него подменю не открывается. -->
         <Style TargetType="MenuItem">
             <Setter Property="Foreground" Value="{StaticResource T.Primary}"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="MenuItem">
-                        <Border x:Name="Bd" Background="Transparent" CornerRadius="5"
-                                Padding="11,7" SnapsToDevicePixels="True">
-                            <TextBlock Text="{Binding Header, RelativeSource={RelativeSource TemplatedParent}}"
-                                       TextTrimming="CharacterEllipsis"
-                                       TextWrapping="NoWrap"
-                                       VerticalAlignment="Center"/>
-                        </Border>
+                        <Grid SnapsToDevicePixels="True">
+                            <!-- Подменю: Placement справа от пункта. -->
+                            <Popup x:Name="PART_Popup"
+                                   AllowsTransparency="True"
+                                   Placement="Right"
+                                   IsOpen="{TemplateBinding IsSubmenuOpen}"
+                                   Focusable="False"
+                                   PopupAnimation="Fade">
+                                <Border Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                        CornerRadius="8" Padding="{TemplateBinding Padding}"
+                                        Margin="6" MaxWidth="480" MaxHeight="620"
+                                        SnapsToDevicePixels="True">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled"
+                                                  Focusable="False">
+                                        <ItemsPresenter/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+
+                            <Border x:Name="Bd" Background="Transparent" CornerRadius="5"
+                                    Padding="11,7" SnapsToDevicePixels="True">
+                                <DockPanel LastChildFill="True">
+                                    <!-- Стрелка «есть подменю»: без неё пункт со списком
+                                         групп или палитрой неотличим от команды. -->
+                                    <TextBlock x:Name="SubmenuArrow"
+                                               DockPanel.Dock="Right"
+                                               Text="›"
+                                               Margin="10,0,0,0"
+                                               Visibility="Collapsed"
+                                               Foreground="{StaticResource T.Muted}"/>
+                                    <!-- Образец цвета (Icon у пункта палитры); у обычных
+                                         пунктов Icon = null, и колонка схлопывается. -->
+                                    <ContentControl x:Name="IconHost"
+                                                    DockPanel.Dock="Left"
+                                                    Margin="0,0,8,0"
+                                                    VerticalAlignment="Center"
+                                                    Focusable="False"
+                                                    IsHitTestVisible="False"
+                                                    Content="{TemplateBinding Icon}"/>
+                                    <TextBlock Text="{Binding Header, RelativeSource={RelativeSource TemplatedParent}}"
+                                               TextTrimming="CharacterEllipsis"
+                                               TextWrapping="NoWrap"
+                                               VerticalAlignment="Center"/>
+                                </DockPanel>
+                            </Border>
+                        </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsHighlighted" Value="True">
                                 <Setter TargetName="Bd" Property="Background" Value="{StaticResource B.Hover}"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                            <!-- Стрелка «есть подменю» — у пунктов-заголовков. -->
+                            <Trigger Property="Role" Value="TopLevelHeader">
+                                <Setter TargetName="SubmenuArrow" Property="Visibility" Value="Visible"/>
+                                <!-- Пункт строки меню: подменю раскрывается вниз. -->
+                                <Setter TargetName="PART_Popup" Property="Placement" Value="Bottom"/>
+                            </Trigger>
+                            <Trigger Property="Role" Value="SubmenuHeader">
+                                <Setter TargetName="SubmenuArrow" Property="Visibility" Value="Visible"/>
+                                <!-- Пункт меню/контекстного меню: подменю вбок, как в Windows. -->
+                                <Setter TargetName="PART_Popup" Property="Placement" Value="Right"/>
+                            </Trigger>
+                            <!-- Нет образца цвета — колонка схлопывается. -->
+                            <Trigger Property="Icon" Value="{x:Null}">
+                                <Setter TargetName="IconHost" Property="Visibility" Value="Collapsed"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
