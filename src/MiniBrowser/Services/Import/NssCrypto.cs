@@ -52,8 +52,9 @@ internal static class NssCrypto
 
         if (oid == OidPbes2)
         {
-            // SEQUENCE { kdf: SEQUENCE{OID pbkdf2, SEQUENCE{salt, iter, len, SEQUENCE{prf}}}, enc: SEQUENCE{OID aes256-cbc, OCTET STRING iv14} }
-            var kdf = algId.ReadSequence();
+            // algId = { OID pbes2, params{ kdf{ OID pbkdf2, {salt, iter, len, prf} }, enc{ OID aes256, iv } } }
+            var pbes2Params = algId.ReadSequence();
+            var kdf = pbes2Params.ReadSequence();
             kdf.ReadObjectIdentifier();
             var kdfParams = kdf.ReadSequence();
             var entrySalt = kdfParams.ReadOctetString();
@@ -64,10 +65,11 @@ internal static class NssCrypto
             kdfParams.ThrowIfNotEmpty();
             kdf.ThrowIfNotEmpty();
 
-            var encScheme = algId.ReadSequence();
+            var encScheme = pbes2Params.ReadSequence();
             encScheme.ReadObjectIdentifier();
             var ivStored = encScheme.ReadOctetString();
             encScheme.ThrowIfNotEmpty();
+            pbes2Params.ThrowIfNotEmpty();
             algId.ThrowIfNotEmpty();
 
             // NSS-кверка: IV хранится 14 байт, а используется 16 — с заголовком DER (04 0e).
