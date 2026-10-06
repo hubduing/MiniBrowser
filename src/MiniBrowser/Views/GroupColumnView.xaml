@@ -131,12 +131,15 @@
                 </ItemsControl>
             </DockPanel>
 
-            <!-- Свёрнутая группа: имя вертикально и счётчик -->
+            <!-- Свёрнутая группа: имя вертикально и счётчик. Клик по колонке
+                 разворачивает её обратно. -->
             <StackPanel x:Name="CollapsedPanel"
                         Grid.Column="1"
                         Orientation="Horizontal"
                         HorizontalAlignment="Center"
-                        Visibility="Collapsed">
+                        Visibility="Collapsed"
+                        Cursor="Hand"
+                        MouseLeftButtonUp="Collapsed_Click">
                 <TextBlock x:Name="VerticalName"
                            FontSize="12"
                            RenderTransformOrigin="0,0"

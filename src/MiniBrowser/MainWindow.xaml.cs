@@ -72,6 +72,8 @@ public partial class MainWindow : Window, IBrowserActions
         TabStrip.GroupCloseRequested += CloseGroup;
         TabStrip.GroupCollapseToggled += _tabManager.ToggleGroupCollapsed;
         TabStrip.GroupRenameRequested += group => TabStrip.BeginRename(group);
+        // Имя меняется прямо в колонке: сессию помечаем здесь.
+        TabStrip.GroupRenamed += _ => _tabManager.MarkSessionDirty();
         TabStrip.GroupColorRequested += (group, color) =>
         {
             _tabManager.SetGroupColor(group, color);
@@ -697,6 +699,11 @@ public partial class MainWindow : Window, IBrowserActions
                 _settings.Current.WindowHeight = bounds.Height;
             }
         }
+        // Сессия обязана пережить закрытие: переименование, сворачивание и цвет
+        // могли не дождаться дебаунса — пишем принудительно, как и обещено
+        // спецификации (дебаунс-таймер глушим, чтобы не писал после закрытия).
+        _sessionSaveTimer?.Stop();
+        SaveSessionDebounced();
         _settings.Save();
     }
 

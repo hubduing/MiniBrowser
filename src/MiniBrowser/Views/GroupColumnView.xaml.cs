@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using MiniBrowser.Models;
 using MiniBrowser.Services;
 
@@ -29,6 +30,10 @@ public partial class GroupColumnView : UserControl
     };
 
     private TabGroup? _group;
+
+    // Отложенный одиночный клик по имени: ждём, не станет ли он половиной
+    // двойного клика — тогда вместо сворачивания откроется переименование.
+    private DispatcherTimer? _pendingCollapse;
 
     // Откуда начали тащить вкладку: без этого обычный клик не отличить от начала
     // перетаскивания, а начинать drag на каждый чих нельзя.
@@ -60,6 +65,9 @@ public partial class GroupColumnView : UserControl
     public event Action<TabGroup>? GroupCloseRequested;
     public event Action<TabGroup>? GroupRenameRequested;
     public event Action<TabGroup>? GroupCollapseToggled;
+
+    /// <summary>Имя группы поменялось — окно должно пометить сессию изменённой.</summary>
+    public event Action<TabGroup>? GroupRenamed;
     public event Action<Tab, Point>? TabMoveRequested;
     public event Action<TabGroup, bool>? DropHintChanged;
 
@@ -87,10 +95,13 @@ public partial class GroupColumnView : UserControl
     /// <summary>
     /// Счётчик на заголовке обязан следовать за составом группы: вкладки
     /// добавляются и закрываются мимо колонки, события прилетают из модели.
+    /// Сворачивание, имя и цвет меняются там же — колонка перерисовывается сама.
     /// </summary>
     private void OnGroupChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(TabGroup.Count) or null) Apply();
+        if (e.PropertyName is nameof(TabGroup.Count) or nameof(TabGroup.IsCollapsed)
+            or nameof(TabGroup.Name) or nameof(TabGroup.ColorIndex) or null)
+            Apply();
     }
 
     /// <summary>Показать колонку: цвет, имя, счётчик, свёрнутость.</summary>
@@ -159,15 +170,48 @@ public partial class GroupColumnView : UserControl
 
     private void Name_Click(object sender, MouseButtonEventArgs e)
     {
-        // Переименование только двойным кликом: одиночный не должен переименовывать.
-        if (e.ClickCount != 2 || _group is null) return;
-        BeginRename();
+        if (_group is null) return;
+
+        // Двойной клик — переименование: отложенный сворачиваемый одиночный
+        // клик отменяется, иначе колонка свернётся под открытым полем имени.
+        if (e.ClickCount >= 2)
+        {
+            CancelPendingCollapse();
+            BeginRename();
+            return;
+        }
+
+        // Одиночный клик по имени сворачивает группу. Действие откладывается
+        // на 300 мс: вторая половина двойного клика прилетает быстрее.
+        CancelPendingCollapse();
+        _pendingCollapse = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+        var group = _group;
+        _pendingCollapse.Tick += (_, _) =>
+        {
+            CancelPendingCollapse();
+            GroupCollapseToggled?.Invoke(group);
+        };
+        _pendingCollapse.Start();
+    }
+
+    private void CancelPendingCollapse()
+    {
+        if (_pendingCollapse is null) return;
+        _pendingCollapse.Stop();
+        _pendingCollapse = null;
+    }
+
+    private void Collapsed_Click(object sender, MouseButtonEventArgs e)
+    {
+        // Клик по свёрнутой колонке разворачивает её обратно.
+        if (_group is not null) GroupCollapseToggled?.Invoke(_group);
     }
 
     /// <summary>Открыть поле ввода имени прямо в заголовке.</summary>
     public void BeginRename()
     {
         if (_group is null) return;
+        CancelPendingCollapse();
         RenameBox.Text = _group.Name;
         RenameBox.Visibility = Visibility.Visible;
         NameText.Visibility = Visibility.Collapsed;
@@ -182,8 +226,12 @@ public partial class GroupColumnView : UserControl
         RenameBox.Visibility = Visibility.Collapsed;
         NameText.Visibility = Visibility.Visible;
         if (_group is null || value.Length == 0) return;
+        var changed = _group.Name != value;
         _group.Name = value;
         Apply();
+        // Новое имя должно пережить перезапуск — сообщаем наверх, что сессия
+        // изменилась (дебаунс-запись запускается окном).
+        if (changed) GroupRenamed?.Invoke(_group);
     }
 
     public void CancelRename()
@@ -202,6 +250,9 @@ public partial class GroupColumnView : UserControl
 
     private void Header_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
+        // Новое нажатие отменяет отложенное сворачивание: затяжное удержание
+        // мыши — это начало перетаскивания или второй клик двойного, а не клик.
+        CancelPendingCollapse();
         _dragGroupOrigin = e.GetPosition(this);
         _dragGroup = _group;
     }

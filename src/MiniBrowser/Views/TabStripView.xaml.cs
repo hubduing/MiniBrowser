@@ -26,6 +26,9 @@ public partial class TabStripView : UserControl
     public event Action<TabGroup>? GroupCollapseToggled;
     public event Action<TabGroup, int>? GroupMoveRequested;
 
+    /// <summary>Имя группы изменено прямо в колонке — окно помечает сессию.</summary>
+    public event Action<TabGroup>? GroupRenamed;
+
     /// <summary>Вкладка и позиция курсора в координатах панели.</summary>
     public event Action<Tab, Point>? TabMoveRequested;
 
@@ -63,6 +66,7 @@ public partial class TabStripView : UserControl
             column.GroupCloseRequested += g => GroupCloseRequested?.Invoke(g);
             column.GroupRenameRequested += g => GroupRenameRequested?.Invoke(g);
             column.GroupCollapseToggled += g => GroupCollapseToggled?.Invoke(g);
+            column.GroupRenamed += g => GroupRenamed?.Invoke(g);
             column.TabMoveRequested += (t, p) => TabMoveRequested?.Invoke(t, ToPanelPoint(column, p));
             column.DropHintChanged += (g, on) => SetDropHint(g, on);
             column.TabContextRequested += OnTabContextRequested;

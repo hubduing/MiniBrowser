@@ -87,12 +87,29 @@ public sealed class TabManager
     public TabGroup CreateGroup(string? name = null, int? colorIndex = null) =>
         _groups.CreateGroup(name, colorIndex);
 
-    public void RenameGroup(TabGroup group, string name) => group.Name = name;
+    public void RenameGroup(TabGroup group, string name)
+    {
+        group.Name = name;
+        SessionDirty?.Invoke();
+    }
 
-    public void SetGroupColor(TabGroup group, int colorIndex) =>
+    public void SetGroupColor(TabGroup group, int colorIndex)
+    {
         group.ColorIndex = Math.Clamp(colorIndex, 0, TabGroups.PaletteSize - 1);
+        SessionDirty?.Invoke();
+    }
 
-    public void ToggleGroupCollapsed(TabGroup group) => group.IsCollapsed = !group.IsCollapsed;
+    public void ToggleGroupCollapsed(TabGroup group)
+    {
+        group.IsCollapsed = !group.IsCollapsed;
+        SessionDirty?.Invoke();
+    }
+
+    /// <summary>
+    /// Состояние групп изменилось мимо операций менеджера (переименование
+    /// идёт прямо из колонки) — сообщить окну, что сессию пора записать.
+    /// </summary>
+    public void MarkSessionDirty() => SessionDirty?.Invoke();
 
     public void MoveTab(Tab tab, TabGroup target, int index) => _groups.MoveTab(tab, target, index);
 
