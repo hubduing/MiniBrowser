@@ -1,4 +1,5 @@
 using System.IO;
+using MiniBrowser.Models;
 using MiniBrowser.Services;
 using Xunit;
 
@@ -207,5 +208,67 @@ public class StorageServiceTests : IDisposable
             // Упавший тест не должен оставлять мусор в %TEMP%.
             if (File.Exists(blocker)) File.Delete(blocker);
         }
+    }
+
+    [Fact]
+    public void LoadSession_NothingStored_ReturnsNull()
+    {
+        Assert.Null(_storage.LoadSession());
+    }
+
+    [Fact]
+    public void SaveThenLoad_KeepsGroupsTabsAndOrder()
+    {
+        var snapshot = new SessionSnapshot(
+            new[]
+            {
+                new SessionGroupRow("g1", "Работа", 3, true, 0),
+                new SessionGroupRow("g2", "Учёба", 5, false, 1),
+            },
+            new[]
+            {
+                new SessionTabRow("t1", "g1", "https://a.example/", "А", true, 0),
+                new SessionTabRow("t2", "g1", "https://b.example/", "Б", false, 1),
+                new SessionTabRow("t3", "g2", "https://c.example/", "", false, 0),
+            });
+
+        _storage.SaveSession(snapshot);
+        var loaded = _storage.LoadSession()!;
+
+        Assert.Equal(2, loaded.Groups.Count);
+        Assert.Equal("Работа", loaded.Groups[0].Name);
+        Assert.Equal(3, loaded.Groups[0].ColorIndex);
+        Assert.True(loaded.Groups[0].Collapsed);
+        Assert.Equal(3, loaded.Tabs.Count);
+        Assert.Equal(new[] { "t1", "t2", "t3" }, loaded.Tabs.Select(t => t.Id).ToArray());
+        Assert.Equal("https://b.example/", loaded.Tabs[1].Url);
+        Assert.True(loaded.Tabs[0].IsActive);
+    }
+
+    [Fact]
+    public void SaveSession_SecondTime_ReplacesFirst()
+    {
+        _storage.SaveSession(new SessionSnapshot(
+            new[] { new SessionGroupRow("g1", "Старая", 0, false, 0) },
+            new[] { new SessionTabRow("t1", "g1", "https://a.example/", "", false, 0) }));
+
+        _storage.SaveSession(new SessionSnapshot(
+            new[] { new SessionGroupRow("g2", "Новая", 1, false, 0) },
+            new[] { new SessionTabRow("t2", "g2", "https://b.example/", "", false, 0) }));
+
+        var loaded = _storage.LoadSession()!;
+        Assert.Equal("Новая", Assert.Single(loaded.Groups).Name);
+        Assert.Equal("t2", Assert.Single(loaded.Tabs).Id);
+    }
+
+    [Fact]
+    public void SaveSession_EmptySnapshot_LeavesNothingToLoad()
+    {
+        _storage.SaveSession(new SessionSnapshot(
+            new[] { new SessionGroupRow("g1", "А", 0, false, 0) },
+            Array.Empty<SessionTabRow>()));
+        _storage.SaveSession(SessionService.EmptySnapshot());
+
+        Assert.Null(_storage.LoadSession());
     }
 }

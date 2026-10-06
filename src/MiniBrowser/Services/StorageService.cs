@@ -52,6 +52,23 @@ public sealed class StorageService : IDisposable
                     title TEXT NOT NULL DEFAULT '',
                     added_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
                 );
+                -- Раскладка групп и вкладок. Идентификаторы — Guid строкой, чтобы
+                -- восстановление не зависело от порядка строк в файле сессии.
+                CREATE TABLE IF NOT EXISTS tab_groups (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    color_index INTEGER NOT NULL DEFAULT 0,
+                    position INTEGER NOT NULL,
+                    collapsed INTEGER NOT NULL DEFAULT 0
+                );
+                CREATE TABLE IF NOT EXISTS session_tabs (
+                    id TEXT PRIMARY KEY,
+                    group_id TEXT NOT NULL,
+                    position INTEGER NOT NULL,
+                    url TEXT NOT NULL,
+                    title TEXT NOT NULL DEFAULT '',
+                    is_active INTEGER NOT NULL DEFAULT 0
+                );
                 """);
         }
         catch
@@ -210,6 +227,100 @@ public sealed class StorageService : IDisposable
         }
         catch { }
         return result;
+    }
+
+    /// <summary>
+    /// Записать раскладку сессии целиком. Сессия маленькая и меняется целиком
+    /// при каждом изменении, поэтому диффы не делаем: обе таблицы чистятся и
+    /// заполняются заново в одной транзакции — полузаписанной сессии не бывает.
+    /// </summary>
+    public void SaveSession(SessionSnapshot snapshot)
+    {
+        if (_connection is null) return;
+        try
+        {
+            using var transaction = _connection.BeginTransaction();
+
+            Run(transaction, "DELETE FROM tab_groups;");
+            Run(transaction, "DELETE FROM session_tabs;");
+
+            foreach (var group in snapshot.Groups)
+            {
+                Run(transaction,
+                    "INSERT INTO tab_groups (id, name, color_index, position, collapsed) " +
+                    "VALUES ($id, $name, $color, $pos, $collapsed);",
+                    ("$id", group.Id), ("$name", group.Name),
+                    ("$color", group.ColorIndex), ("$pos", group.Position),
+                    ("$collapsed", group.Collapsed ? 1 : 0));
+            }
+
+            foreach (var tab in snapshot.Tabs)
+            {
+                Run(transaction,
+                    "INSERT INTO session_tabs (id, group_id, position, url, title, is_active) " +
+                    "VALUES ($id, $gid, $pos, $url, $title, $active);",
+                    ("$id", tab.Id), ("$gid", tab.GroupId), ("$pos", tab.Position),
+                    ("$url", tab.Url), ("$title", tab.Title), ("$active", tab.IsActive ? 1 : 0));
+            }
+
+            transaction.Commit();
+        }
+        catch { /* Сессия не обязана переживать сбой записи: смиссия не восстановится */ }
+    }
+
+    /// <summary>Прочитать снимок сессии или null, если хранилища/сессии нет.</summary>
+    public SessionSnapshot? LoadSession()
+    {
+        if (_connection is null) return null;
+        try
+        {
+            var groups = new List<SessionGroupRow>();
+            using (var cmd = _connection.CreateCommand())
+            {
+                cmd.CommandText =
+                    "SELECT id, name, color_index, position, collapsed FROM tab_groups ORDER BY position;";
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                    groups.Add(new SessionGroupRow(
+                        reader.GetString(0), reader.GetString(1), (int)reader.GetInt64(2),
+                        reader.GetInt64(4) != 0, (int)reader.GetInt64(3)));
+            }
+
+            // Без групп хранилище считается пустым: чинки группы без вкладок нет,
+            // а старт с них означал бы потерю всего, что было.
+            if (groups.Count == 0) return null;
+
+            var tabs = new List<SessionTabRow>();
+            using (var cmd = _connection.CreateCommand())
+            {
+                // Порядок вкладок восстанавливаем по порядку их группы, а уже внутри группы —
+// по сохранённой позиции. Так чтение не зависит от того, сквозную позицию
+// присвоил писатель или позицию внутри своей группы.
+cmd.CommandText =
+                    "SELECT id, group_id, url, title, is_active FROM session_tabs " +
+                    "ORDER BY (SELECT g.position FROM tab_groups g WHERE g.id = session_tabs.group_id), " +
+                    "position, rowid;";
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                    tabs.Add(new SessionTabRow(
+                        reader.GetString(0), reader.GetString(1), reader.GetString(2),
+                        reader.GetString(3), reader.GetInt64(4) != 0, tabs.Count));
+            }
+
+            return new SessionSnapshot(groups, tabs);
+        }
+        catch { return null; }
+    }
+
+    /// <summary>Выполнить одну команду внутри транзакции сессии.</summary>
+    private void Run(SqliteTransaction transaction, string sql, params (string Name, object Value)[] args)
+    {
+        using var cmd = transaction.Connection!.CreateCommand();
+        cmd.Transaction = transaction;
+        cmd.CommandText = sql;
+        foreach (var (name, value) in args)
+            cmd.Parameters.AddWithValue(name, value);
+        cmd.ExecuteNonQuery();
     }
 
     public void Dispose() => _connection?.Dispose();
