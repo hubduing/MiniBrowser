@@ -11,4 +11,10 @@ public sealed class AppSettings
     public string SearchUrl { get; set; } = "https://www.google.com/search?q={0}";
     public bool ShowStatusBar { get; set; } = true;
     public double DefaultFontSize { get; set; } = 16;
+
+    /// <summary>Блокировка рекламы включена по умолчанию; выключается кнопкой или в настройках.</summary>
+    public bool AdBlockEnabled { get; set; } = true;
+
+    /// <summary>Домены, где пользователь отключил блокировку (нормализованные host).</summary>
+    public List<string> AdBlockDisabledHosts { get; set; } = new();
 }

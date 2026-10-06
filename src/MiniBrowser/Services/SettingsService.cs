@@ -56,6 +56,10 @@ public sealed class SettingsService
         settings.SearchUrl = defaults.SearchUrl;
         settings.ShowStatusBar = defaults.ShowStatusBar;
         settings.DefaultFontSize = defaults.DefaultFontSize;
+        settings.AdBlockEnabled = defaults.AdBlockEnabled;
+        // Список не переиспользуем: сброс обязан отвязать его от дефолтного
+        // экземпляра, иначе ClearDisabledHosts() обнулил бы и «настоящие» дефолты.
+        settings.AdBlockDisabledHosts = new List<string>(defaults.AdBlockDisabledHosts);
     }
 
     private void Load()
@@ -90,6 +94,39 @@ public sealed class SettingsService
             settings.HomeUrl = new AppSettings().HomeUrl;
         if (string.IsNullOrWhiteSpace(settings.SearchUrl))
             settings.SearchUrl = new AppSettings().SearchUrl;
+
+        // Старый settings.json без этого поля даёт null, а обращается к нему
+        // переключение блокировки — починка обязана быть здесь, не в AdBlockService.
+        settings.AdBlockDisabledHosts ??= new List<string>();
+
+        // Мусор в белом списке (пустые строки, URL целиком, нечитаемое) ломает
+        // отображение счётчика и сравнение по хосту, поэтому приводим к виду host.
+        settings.AdBlockDisabledHosts = settings.AdBlockDisabledHosts
+            .Where(h => !string.IsNullOrWhiteSpace(h))
+            .Select(NormalizeHost)
+            .Where(h => h.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>Домен без схемы, www и порта — ключ белого списка блокировки.</summary>
+    private static string NormalizeHost(string? host)
+    {
+        if (string.IsNullOrWhiteSpace(host)) return string.Empty;
+        var value = host.Trim().ToLowerInvariant();
+        if (value.Contains("://"))
+        {
+            // TryCreate, а не new Uri: мусор в настройках не должен бросать
+            // исключение прямо из Validate — иначе Save() молча не сохранит файл.
+            if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)) return string.Empty;
+            value = uri.Host.ToLowerInvariant();
+        }
+        else
+        {
+            var colon = value.IndexOf(':');
+            if (colon >= 0) value = value[..colon];
+        }
+        return value.StartsWith("www.", StringComparison.Ordinal) ? value[4..] : value;
     }
 
     private static double Normalize(double value, double fallback, double min, double max) =>

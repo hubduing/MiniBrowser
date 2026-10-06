@@ -13,6 +13,10 @@ public sealed class TabManager
     private readonly IBrowserActions _actions;
     // Источник текущего множителя масштаба — хост даёт `() => _settings.EffectiveZoom`.
     private readonly Func<double> _zoomProvider;
+    // Провайдеры блокировки приходят от хоста: сам список фильтров и белый
+    // список живут в AdBlockService, а вкладкам нужно только решение по запросу.
+    private readonly Func<Uri, string?, bool>? _isBlocked;
+    private readonly Func<string?, string>? _cosmeticScriptProvider;
     private readonly List<Tab> _tabs = new();
     private readonly Dictionary<Tab, BrowserTabView> _views = new();
     private readonly TabSleeper _sleeper;
@@ -31,12 +35,20 @@ public sealed class TabManager
     public BrowserTabView? ActiveView =>
         ActiveTab is null ? null : _views.GetValueOrDefault(ActiveTab);
 
-    public TabManager(Panel contentHost, StorageService storage, IBrowserActions actions, Func<double> zoomProvider)
+    public TabManager(
+        Panel contentHost,
+        StorageService storage,
+        IBrowserActions actions,
+        Func<double> zoomProvider,
+        Func<Uri, string?, bool>? isBlocked = null,
+        Func<string?, string>? cosmeticScriptProvider = null)
     {
         _contentHost = contentHost;
         _storage = storage;
         _actions = actions;
         _zoomProvider = zoomProvider ?? throw new ArgumentNullException(nameof(zoomProvider));
+        _isBlocked = isBlocked;
+        _cosmeticScriptProvider = cosmeticScriptProvider;
         _sleeper = new TabSleeper(this);
         _sleeper.Start();
     }
@@ -44,7 +56,7 @@ public sealed class TabManager
     public Tab NewTab(string? url = null)
     {
         var tab = new Tab();
-        var view = new BrowserTabView(tab, _actions, _zoomProvider);
+        var view = new BrowserTabView(tab, _actions, _zoomProvider, _isBlocked, _cosmeticScriptProvider);
 
         view.Navigated += HandleNavigated;
         view.StateChanged += t => StateChanged?.Invoke(t);
@@ -163,6 +175,30 @@ public sealed class TabManager
         foreach (var view in _views.Values)
             view.ZoomChanged();
     }
+
+    public void RefreshAdBlockOnAllTabs()
+    {
+        foreach (var view in _views.Values)
+            view.RefreshCosmeticScript();
+    }
+
+    /// <summary>Перерегистрировать маскировку в одной вкладке и перезагрузить её.</summary>
+    public void RefreshAdBlockForTab(Tab tab)
+    {
+        if (!_views.TryGetValue(tab, out var view)) return;
+        view.RefreshCosmeticScript();
+        view.Reload();
+    }
+
+    /// <summary>Сколько запросов заблокировано на активной вкладке (для щита в тулбаре).</summary>
+    public int ActiveBlockedRequestCount => ActiveView?.BlockedRequestCount ?? 0;
+
+    /// <summary>Есть ли вкладки с этим хостом — их индикаторы блокировки тоже меняются.</summary>
+    public bool HasTabForHost(string host) =>
+        _views.Keys.Any(t => string.Equals(HostOf(t.Url), host, StringComparison.OrdinalIgnoreCase));
+
+    private static string? HostOf(string? url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri.Host : null;
 
     /// <summary>Выгрузить WebView2 неактивной вкладки (освободить память).</summary>
     public void Sleep(Tab tab)

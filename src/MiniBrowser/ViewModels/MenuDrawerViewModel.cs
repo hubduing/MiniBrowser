@@ -16,6 +16,10 @@ public sealed class MenuDrawerViewModel : INotifyPropertyChanged
 {
     private readonly StorageService _storage;
     private readonly SettingsService _settings;
+    // Список доменов, где пользователь отключил блокировку. Отдельный сервис
+    // панели не нужен: правила фильтров её не касаются, нужен только счётчик
+    // и умение очистить список. Заодно он чинит null из старого settings.json.
+    private readonly AdBlockService _adBlock;
     private readonly ICollectionView _bookmarkView;
     private readonly ICollectionView _historyView;
 
@@ -26,6 +30,9 @@ public sealed class MenuDrawerViewModel : INotifyPropertyChanged
     public event Action? HistoryChanged;
     public event Action? SettingsChanged;
 
+    /// <summary>Изменился мастер-выключатель или белый список — щит в тулбаре надо перерисовать.</summary>
+    public event Action? AdBlockStateChanged;
+
     public ObservableCollection<BookmarkItem> Bookmarks { get; } = new();
     public ObservableCollection<HistoryItem> History { get; } = new();
 
@@ -33,6 +40,7 @@ public sealed class MenuDrawerViewModel : INotifyPropertyChanged
     {
         _storage = storage;
         _settings = settings;
+        _adBlock = new AdBlockService(_settings.Current);
 
         // Фильтрация — только здесь: коллекции всегда хранят полные данные,
         // а счётчики читают представление. Второй механизм (предфильтр коллекции)
@@ -70,9 +78,22 @@ public sealed class MenuDrawerViewModel : INotifyPropertyChanged
         {
             SettingsService.ResetToDefaults(_settings.Current);
             _settings.Save();
+            // Сброс вернул блокировку к дефолтам — щит обязан это показать.
+            AdBlockStateChanged?.Invoke();
             // Событие строго после изменения Current: хост применит их позже, в своей очереди.
             SettingsChanged?.Invoke();
         });
+        ClearAdBlockHostsCommand = new RelayCommand(
+            _ =>
+            {
+                // Без проверки команда отключается: пустая кнопка сброса
+                // выглядит как неработающая, а список чаще всего пуст.
+                _adBlock.ClearDisabledHosts();
+                _settings.Save();
+                OnPropertyChanged(nameof(AdBlockDisabledHostsText));
+                AdBlockStateChanged?.Invoke();
+            },
+            _ => DisabledHostsCount > 0);
         ClearSearchCommand = new RelayCommand(() => SearchText = string.Empty);
         SetWindowSizeCommand = new RelayCommand(p => ApplyWindowSize(p as string));
 
@@ -105,6 +126,19 @@ public sealed class MenuDrawerViewModel : INotifyPropertyChanged
     public ICommand ClearSearchCommand { get; }
     public ICommand SetWindowSizeCommand { get; }
 
+    /// <summary>Сбросить список сайтов с отключённой блокировкой.</summary>
+    public ICommand ClearAdBlockHostsCommand { get; }
+
+    /// <summary>Сколько доменов пользователь исключил из блокировки.</summary>
+    public int DisabledHostsCount => _adBlock.DisabledHostsCount;
+
+    public bool HasDisabledHosts => DisabledHostsCount > 0;
+
+    public string AdBlockDisabledHostsText => DisabledHostsCount > 0
+        ? $"Реклама не блокируется на {DisabledHostsCount} " +
+          (DisabledHostsCount == 1 ? "сайте" : "сайтах")
+        : "Белый список пуст — реклама блокируется везде";
+
     /// <summary>Источник для ComboBox поисковой системы.</summary>
     public string[] SearchEngines => NavigationService.EngineNames;
 
@@ -113,6 +147,21 @@ public sealed class MenuDrawerViewModel : INotifyPropertyChanged
 
     /// <summary>Разметка зовёт после записи в Settings.Current из code-behind (ComboBox через Tag).</summary>
     public void NotifySettingsChanged() => SettingsChanged?.Invoke();
+
+    /// <summary>Разметка зовёт после смены глобального флажка блокировки.</summary>
+    public void NotifyAdBlockStateChanged() => AdBlockStateChanged?.Invoke();
+
+    /// <summary>
+    /// Пересчитать счётчик белого списка. Зовётся хостом после переключения
+    /// блокировки щитом или хоткеем: список меняется мимо панели, и без этого
+    /// она показывала бы устаревшее число.
+    /// </summary>
+    public void RefreshAdBlockHosts()
+    {
+        OnPropertyChanged(nameof(DisabledHostsCount));
+        OnPropertyChanged(nameof(HasDisabledHosts));
+        OnPropertyChanged(nameof(AdBlockDisabledHostsText));
+    }
 
     /// <summary>Поиск активен: эффективный запрос не пуст (пробелы не считаются).</summary>
     public bool IsSearching => _searchText.Trim().Length > 0;

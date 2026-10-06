@@ -16,6 +16,9 @@ public partial class MainWindow : Window, IBrowserActions
     private readonly TabManager _tabManager;
     private readonly string[] _startupUrls;
     private readonly MenuDrawerViewModel _drawerVm;
+    // Сервис создаётся после _settings (поле инициализируется порядком),
+    // поэтому объявляем явно и заполняем в конструкторе.
+    private readonly AdBlockService _adBlock;
     private bool _menuOpen;
     private Tab? _titleTab;
     private bool _started;
@@ -42,7 +45,11 @@ public partial class MainWindow : Window, IBrowserActions
         if (_settings.Current.WindowMaximized) WindowState = WindowState.Maximized;
         else { Width = _settings.Current.WindowWidth; Height = _settings.Current.WindowHeight; }
 
-        _tabManager = new TabManager(ContentHost, _storage, this, () => _settings.EffectiveZoom);
+        _adBlock = new AdBlockService(_settings.Current);
+
+        _tabManager = new TabManager(
+            ContentHost, _storage, this, () => _settings.EffectiveZoom,
+            _adBlock.IsBlocked, _adBlock.BuildCosmeticScript);
         _tabManager.TabsChanged += RefreshTabStrip;
         _tabManager.ActiveTabChanged += OnActiveTabChanged;
         _tabManager.StateChanged += _ => RefreshNavState();
@@ -61,6 +68,7 @@ public partial class MainWindow : Window, IBrowserActions
         Toolbar.ReloadStopRequested += _tabManager.ReloadOrStopActive;
         Toolbar.BookmarkAddRequested += AddBookmark;
         Toolbar.CopyAddressRequested += CopyAddress;
+        Toolbar.ToggleAdBlockRequested += ToggleAdBlock;
 
         _drawerVm = new MenuDrawerViewModel(_storage, _settings);
         Drawer.DataContext = _drawerVm;
@@ -69,6 +77,7 @@ public partial class MainWindow : Window, IBrowserActions
         Drawer.OpenUrlRequested += url => { _tabManager.NavigateActive(url); SetMenuOpen(false); };
         _drawerVm.HistoryChanged += () => StatusText.Text = "История очищена";
         _drawerVm.SettingsChanged += ApplySettings;
+        _drawerVm.AdBlockStateChanged += RefreshAdBlockIndicator;
         Toolbar.ToggleDrawerRequested += () => SetMenuOpen(!_menuOpen);
 
         // Горячие клавиши перехватываем хуком: сообщения клавиатуры приходят и на
@@ -191,6 +200,7 @@ public partial class MainWindow : Window, IBrowserActions
     {
         Toolbar.SetUrl(tab.Url);
         RefreshNavState();
+        RefreshAdBlockIndicator();
         UpdateTitle(tab);
 
         if (string.IsNullOrEmpty(tab.Url))
@@ -211,6 +221,8 @@ public partial class MainWindow : Window, IBrowserActions
         {
             Toolbar.SetUrl(url);
             RefreshNavState();
+            // Хост страницы сменился — щит обязан показать решение для нового сайта.
+            RefreshAdBlockIndicator();
         }
         StatusText.Text = url;
     }
@@ -333,6 +345,52 @@ public partial class MainWindow : Window, IBrowserActions
         _tabManager.ActivateTab(tabs[index]);
     }
 
+    /// <summary>
+    /// Переключить блокировку рекламы на текущем сайте. Решение принимает
+    /// AdBlockService, а хост только перерисовывает щит и перерегистрирует
+    /// маскировку: правила фильтров при переключении не меняются.
+    /// </summary>
+    private void ToggleAdBlock()
+    {
+        if (_tabManager.ActiveTab is not { } tab || string.IsNullOrWhiteSpace(tab.Url)) return;
+        if (!Uri.TryCreate(tab.Url, UriKind.Absolute, out var uri)) return;
+
+        var enabled = _adBlock.ToggleHost(uri.Host);
+        _settings.Save();
+
+        // Панель настроек могла быть открыта — её счётчик доменов устарел.
+        _drawerVm.RefreshAdBlockHosts();
+        RefreshAdBlockIndicator();
+        // Маскировка спрятала рекламу до переключения, и без перезагрузки
+        // страницы она останется скрытой — ровно как в uBlock/Brave.
+        // Перезагружаем только вкладки этого сайта: чужие не трогаем.
+        foreach (var view in _tabManager.Tabs)
+        {
+            if (!string.Equals(HostOf(view.Url), uri.Host, StringComparison.OrdinalIgnoreCase)) continue;
+            _tabManager.RefreshAdBlockForTab(view);
+        }
+
+        StatusText.Text = enabled
+            ? $"Реклама на {uri.Host} блокируется"
+            : $"Реклама на {uri.Host} не блокируется";
+    }
+
+    void IBrowserActions.ToggleAdBlock() => ToggleAdBlock();
+
+    /// <summary>Щит в тулбаре показывает состояние активной вкладки.</summary>
+    private void RefreshAdBlockIndicator()
+    {
+        var tab = _tabManager.ActiveTab;
+        var host = tab is null || !Uri.TryCreate(tab.Url, UriKind.Absolute, out var uri)
+            ? null
+            : uri.Host;
+
+        Toolbar.SetAdBlockState(_adBlock.IsEnabledForHost(host), _tabManager.ActiveBlockedRequestCount);
+    }
+
+    private static string? HostOf(string? url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri.Host : null;
+
     private void AddBookmark()
     {
         if (_tabManager.ActiveTab is not { } tab || string.IsNullOrWhiteSpace(tab.Url)) return;
@@ -365,6 +423,11 @@ public partial class MainWindow : Window, IBrowserActions
         // Масштаб — на все живые движки; уснувшие вкладки возьмут значение
         // при пробуждении через zoomProvider.
         _tabManager.ApplyZoomToAllTabs();
+
+        // Блокировку маскировки надо перерегистрировать: список правил не менялся,
+        // но глобальный выключатель в настройках мог её отключить.
+        _tabManager.RefreshAdBlockOnAllTabs();
+        RefreshAdBlockIndicator();
 
         StatusBarBorder.Visibility = s.ShowStatusBar ? Visibility.Visible : Visibility.Collapsed;
 

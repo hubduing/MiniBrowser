@@ -23,7 +23,31 @@ public class HotkeysTests
         public void ToggleMenu() => Calls.Add("ToggleMenu");
         public void ShowHistory() => Calls.Add("ShowHistory");
         public void ShowBookmarks() => Calls.Add("ShowBookmarks");
+        public void ToggleAdBlock() => Calls.Add("ToggleAdBlock");
         bool IBrowserActions.IsManualFullscreen => IsManualFullscreen;
+    }
+
+    [Fact] public void CtrlShiftA_TogglesAdBlock()
+    {
+        var a = new FakeActions();
+        Assert.True(Hotkeys.TryHandle(Key.A, ModifierKeys.Control | ModifierKeys.Shift, a));
+        Assert.Equal(new[] { "ToggleAdBlock" }, a.Calls);
+    }
+
+    [Fact] public void PlainA_IsNotSwallowed()
+    {
+        // Ctrl+Shift+A не должен ловить обычную «A»: она нужна странице
+        // (например, в поисковой строке Google).
+        var a = new FakeActions();
+        Assert.False(Hotkeys.TryHandle(Key.A, ModifierKeys.None, a));
+        Assert.Empty(a.Calls);
+    }
+
+    [Fact] public void CtrlA_IsNotSwallowed()
+    {
+        var a = new FakeActions();
+        Assert.False(Hotkeys.TryHandle(Key.A, ModifierKeys.Control, a));
+        Assert.Empty(a.Calls);
     }
 
     [Fact] public void CtrlM_TogglesMenu()

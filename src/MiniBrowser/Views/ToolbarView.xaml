@@ -21,6 +21,11 @@
                         Style="{StaticResource FlatToolButton}" ToolTip="Скопировать адрес"/>
                 <Button Content="☆" Click="Bookmark_Click"
                         Style="{StaticResource FlatToolButton}" ToolTip="Добавить в закладки (Ctrl+D)"/>
+                <!-- Щит: активный стиль читается как «блокировка на этом сайте»,
+                     приглушённый — как «здесь рекламу не блокируем». -->
+                <Button x:Name="AdBlockButton" Content="⛊" Click="AdBlock_Click"
+                        Style="{StaticResource FlatToolButton}"
+                        ToolTip="Блокировать рекламу на этом сайте (Ctrl+Shift+A)"/>
                 <Button x:Name="MenuButton" Content="☰" Click="Menu_Click"
                         Style="{StaticResource FlatToolButton}" ToolTip="Меню (Ctrl+M)"/>
             </StackPanel>

@@ -20,6 +20,9 @@ public interface IBrowserActions
     void ShowHistory();
     void ShowBookmarks();
 
+    /// <summary>Переключить блокировку рекламы на текущем сайте.</summary>
+    void ToggleAdBlock();
+
     /// <summary>true — пользователь включил F11-режим (не HTML5-полноэкранный).</summary>
     bool IsManualFullscreen { get; }
 
@@ -51,6 +54,7 @@ public static class Hotkeys
             case ModifierKeys.Control | ModifierKeys.Shift:
                 if (key == Key.Tab) { actions.PrevTab(); return true; }
                 if (key == Key.B) { actions.ShowBookmarks(); return true; }
+                if (key == Key.A) { actions.ToggleAdBlock(); return true; }
                 break;
 
             case ModifierKeys.Alt:

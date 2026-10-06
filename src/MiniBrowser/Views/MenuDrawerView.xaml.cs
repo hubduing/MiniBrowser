@@ -164,6 +164,23 @@ public partial class MenuDrawerView : UserControl
     }
 
     /// <summary>
+    /// Глобальный выключатель блокировки. Отдельное событие о состоянии
+    /// блокировки: щит в тулбаре должен среагировать на флажок так же,
+    /// как на клик по нему самому.
+    /// </summary>
+    private void AdBlockBox_Click(object sender, RoutedEventArgs e)
+    {
+        var vm = DataContext as MenuDrawerViewModel;
+        if (vm is null) return;
+        if (sender is CheckBox box)
+        {
+            vm.Settings.Current.AdBlockEnabled = box.IsChecked == true;
+            vm.NotifySettingsChanged();
+            vm.NotifyAdBlockStateChanged();
+        }
+    }
+
+    /// <summary>
     /// Тот же приём, что у StatusBarBox: чистая TwoWay-привязка молча меняла бы
     /// значение без сохранения — хост узнаёт о новом флаге только через событие.
     /// </summary>

@@ -224,6 +224,76 @@ public class MenuDrawerViewModelTests : IDisposable
     }
 
     [Fact]
+    public void AdBlock_EmptyWhitelistByDefault()
+    {
+        Assert.Equal(0, _vm.DisabledHostsCount);
+        Assert.False(_vm.HasDisabledHosts);
+        Assert.Equal("Белый список пуст — реклама блокируется везде", _vm.AdBlockDisabledHostsText);
+    }
+
+    [Fact]
+    public void AdBlock_ClearCommand_DisabledWhileWhitelistEmpty()
+    {
+        // Пустая кнопка сброса выглядит как неработающая — она обязана быть серой.
+        Assert.False(_vm.ClearAdBlockHostsCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void AdBlock_RefreshAdBlockHosts_UpdatesCountAndText()
+    {
+        _settings.Current.AdBlockDisabledHosts.Add("example.com");
+        _vm.RefreshAdBlockHosts();
+
+        Assert.Equal(1, _vm.DisabledHostsCount);
+        Assert.True(_vm.HasDisabledHosts);
+        Assert.Equal("Реклама не блокируется на 1 сайте", _vm.AdBlockDisabledHostsText);
+        Assert.True(_vm.ClearAdBlockHostsCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void AdBlock_ClearCommand_ClearsWhitelistAndNotifies()
+    {
+        _settings.Current.AdBlockDisabledHosts.Add("example.com");
+        _settings.Current.AdBlockDisabledHosts.Add("site.org");
+        _vm.RefreshAdBlockHosts();
+
+        var notified = 0;
+        _vm.AdBlockStateChanged += () => notified++;
+        _vm.ClearAdBlockHostsCommand.Execute(null);
+
+        Assert.Empty(_settings.Current.AdBlockDisabledHosts);
+        Assert.Equal(1, notified);
+        Assert.Equal("Белый список пуст — реклама блокируется везде", _vm.AdBlockDisabledHostsText);
+    }
+
+    [Fact]
+    public void AdBlock_PluralTextMatchesCount()
+    {
+        _settings.Current.AdBlockDisabledHosts.Add("a.example");
+        _settings.Current.AdBlockDisabledHosts.Add("b.example");
+        _settings.Current.AdBlockDisabledHosts.Add("c.example");
+        _vm.RefreshAdBlockHosts();
+
+        Assert.Equal("Реклама не блокируется на 3 сайтах", _vm.AdBlockDisabledHostsText);
+    }
+
+    [Fact]
+    public void ResetSettingsCommand_NotifiesAdBlockState()
+    {
+        _settings.Current.AdBlockEnabled = false;
+        _settings.Current.AdBlockDisabledHosts.Add("example.com");
+        var notified = 0;
+        _vm.AdBlockStateChanged += () => notified++;
+
+        _vm.ResetSettingsCommand.Execute(null);
+
+        // Сброс вернул блокировку к дефолтам, и щит в тулбаре обязан узнать.
+        Assert.True(_settings.Current.AdBlockEnabled);
+        Assert.Empty(_settings.Current.AdBlockDisabledHosts);
+        Assert.Equal(1, notified);
+    }
+
+    [Fact]
     public void RefreshHistory_DedupesAndCountsWithoutSearch()
     {
         _storage.AddHistory("https://news.example/", "Новости дня");

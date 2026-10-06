@@ -19,6 +19,9 @@ public partial class ToolbarView : UserControl
     public event Action? BookmarkAddRequested;
     public event Action? CopyAddressRequested;
 
+    /// <summary>Щит блокировки: хоста просим переключить блокировку на текущем сайте.</summary>
+    public event Action? ToggleAdBlockRequested;
+
     /// <summary>Кнопка ☰ больше не держит ContextMenu: она просит хост открыть панель.</summary>
     public event Action? ToggleDrawerRequested;
 
@@ -76,6 +79,20 @@ public partial class ToolbarView : UserControl
     /// старте приложения поле осталось бы пустым, пока страница ещё грузится,
     /// и пользователь не видел бы, куда он попал.
     /// </summary>
+    /// <summary>
+    /// Состояние щита. Считает заблокированные запросы для подсказки: без него
+    /// пользователь не может отличить «работает молча» от «сломано».
+    /// </summary>
+    public void SetAdBlockState(bool enabled, int blockedCount)
+    {
+        // Глобальный выключатель и пустая страница не различаем: и там, и там
+        // блокировать нечего, и кнопка обязана это показывать одинаково.
+        AdBlockButton.Style = (Style)FindResource(enabled ? "ActiveToolButton" : "FlatToolButton");
+        AdBlockButton.ToolTip = enabled
+            ? $"Реклама блокируется — заблокировано запросов: {blockedCount} (Ctrl+Shift+A)"
+            : "Реклама на этом сайте не блокируется (Ctrl+Shift+A)";
+    }
+
     public void FocusAddress()
     {
         _suppressClear = true;
@@ -168,6 +185,7 @@ public partial class ToolbarView : UserControl
     private void ReloadStop_Click(object sender, RoutedEventArgs e) => ReloadStopRequested?.Invoke();
     private void Bookmark_Click(object sender, RoutedEventArgs e) => BookmarkAddRequested?.Invoke();
     private void Copy_Click(object sender, RoutedEventArgs e) => CopyAddressRequested?.Invoke();
+    private void AdBlock_Click(object sender, RoutedEventArgs e) => ToggleAdBlockRequested?.Invoke();
 
     /// <summary>Кнопка меню делегирует открытие панели хосту через событие.</summary>
     private void Menu_Click(object sender, RoutedEventArgs e) => ToggleDrawerRequested?.Invoke();

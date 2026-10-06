@@ -52,6 +52,15 @@
             </Setter>
         </Style>
 
+        <!-- ==== Кнопка панели инструментов во включённом состоянии ====
+             Отдельный стиль, а не Trigger на FlatToolButton: у плоской кнопки
+             шаблон переопределён, и Trigger на IsEnabled смотрел бы внутрь
+             переопределённого ControlTemplate, где Background не задаётся. -->
+        <Style x:Key="ActiveToolButton" TargetType="Button" BasedOn="{StaticResource FlatToolButton}">
+            <Setter Property="Foreground" Value="{StaticResource T.Accent}"/>
+            <Setter Property="Background" Value="{StaticResource B.Pressed}"/>
+        </Style>
+
         <!-- ==== Кнопка закрытия вкладки ==== -->
         <Style x:Key="CloseTabButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>

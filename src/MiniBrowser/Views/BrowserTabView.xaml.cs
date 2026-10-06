@@ -18,6 +18,16 @@ public partial class BrowserTabView : UserControl
     // Вкладка не знает про файл настроек — текущий множитель спрашивает
     // через делегат у хоста, чтобы не тянуть зависимость на SettingsService.
     private readonly Func<double> _zoomProvider;
+    // Решение о блокировке спрашиваем у хоста: список фильтров и белый список
+    // живут в AdBlockService, а вкладке они не нужны — нужен только ответ.
+    private readonly Func<Uri, string?, bool> _isBlocked;
+    // Хост умеет перегенерировать скрипт маскировки после смены настройки.
+    private readonly Func<string?, string> _cosmeticScriptProvider;
+    // Идентификатор добавленного AddScriptToExecuteOnDocumentCreated-скрипта:
+    // переключение блокировки обязано перерегистрировать его, иначе старый
+    // скрипт продолжит прятать рекламу на только что «разрешённом» сайте.
+    private string? _cosmeticScriptId;
+    private int _blockedCount;
     // Движок создаётся лениво, а ApplyZoom могут позвать раньше:
     // значение ждёт создания CoreWebView2 и применяется в EnsureWebViewAsync.
     private double? _pendingZoom;
@@ -30,7 +40,12 @@ public partial class BrowserTabView : UserControl
     /// <summary>Страница (видео) вошла/вышла из HTML5-полноэкранного режима.</summary>
     public event Action<Tab, bool>? FullscreenChanged;
 
-    public BrowserTabView(Tab tab, IBrowserActions actions, Func<double> zoomProvider)
+    public BrowserTabView(
+        Tab tab,
+        IBrowserActions actions,
+        Func<double> zoomProvider,
+        Func<Uri, string?, bool>? isBlocked = null,
+        Func<string?, string>? cosmeticScriptProvider = null)
     {
         InitializeComponent();
         _tab = tab;
@@ -38,7 +53,14 @@ public partial class BrowserTabView : UserControl
         // Хост всегда передаёт лямбду с актуальным значением — null здесь
         // означал бы вкладку в масштабе-наугад, поэтому падаем сразу.
         _zoomProvider = zoomProvider ?? throw new ArgumentNullException(nameof(zoomProvider));
+        // Блокировка по умолчанию выключена только если хост не дал провайдеров:
+        // тогда вкладка грузится как обычная страница, а не падает.
+        _isBlocked = isBlocked ?? ((_, _) => false);
+        _cosmeticScriptProvider = cosmeticScriptProvider ?? (_ => string.Empty);
     }
+
+    /// <summary>Сколько запросов движок заблокировал на этой вкладке.</summary>
+    public int BlockedRequestCount => _blockedCount;
 
     /// <summary>true — движок WebView2 уже создан для этой вкладки.</summary>
     public bool HasEngine => _web is not null;
@@ -122,6 +144,12 @@ public partial class BrowserTabView : UserControl
         // Уснувшая вкладка при пробуждении обязана взять свежий множитель,
         // а не устаревший — старое отложенное значение стираем.
         _pendingZoom = null;
+        // Скрипта маскировки больше нет: его id принадлежал уничтоженному
+        // движку, и RemoveScriptToExecuteOnDocumentCreated на новом движке
+        // упал бы. При пробуждении WireEvents зарегистрирует скрипт заново.
+        _cosmeticScriptId = null;
+        // Счётчик относился к прошлой загрузке — на новой он начнётся с нуля.
+        _blockedCount = 0;
         _tab.IsAsleep = true;
         // Движок уничтожен — полноэкранного элемента больше не существует.
         IsPageFullscreen = false;
@@ -177,9 +205,103 @@ public partial class BrowserTabView : UserControl
         return true;
     }
 
+    /// <summary>
+    /// Перерегистрировать скрипт маскировки. Зовётся хостом после смены
+    /// настройки блокировки: список правил тот же, но решение по сайту — нет.
+    /// pageHost передаётся явно там, где он известен (навигация), иначе берётся
+    /// у текущего источника документа.
+    /// </summary>
+    public void RefreshCosmeticScript(string? pageHost = null)
+    {
+        if (_web?.CoreWebView2 is not { } core) return;
+
+        try
+        {
+            // Старыый скрипт мог остаться в списке и сработать на следующем
+            // документе, спрятав рекламу там, где её уже разрешили оставить.
+            if (_cosmeticScriptId is not null)
+            {
+                core.RemoveScriptToExecuteOnDocumentCreated(_cosmeticScriptId);
+                _cosmeticScriptId = null;
+            }
+
+            var script = _cosmeticScriptProvider(pageHost ?? CurrentPageHost());
+            if (string.IsNullOrWhiteSpace(script)) return;
+
+            // Идентификатор приходит асинхронно: между вызовом и продолжением
+            // вкладка может уснуть и потерять движок, поэтому результат
+            // засчитываем только если движок всё ещё тот же самый.
+            var engine = core;
+            var id = engine.AddScriptToExecuteOnDocumentCreatedAsync(script);
+            RegisterCosmeticScript(engine, id);
+        }
+        catch
+        {
+            // Скрипт — украшение: падение регистрации не должно ронять страницу.
+            // Сама блокировка запросов работает независимо от него.
+        }
+    }
+
+    /// <summary>
+    /// Дождаться id скрипта и запомнить его, только если движок не сменился.
+    /// Идентификатор принадлежит конкретному движку: сохранить его после сна
+    /// вкладки нельзя, иначе Remove упадёт на чужом движке.
+    /// </summary>
+    private async void RegisterCosmeticScript(CoreWebView2 engine, Task<string> task)
+    {
+        try
+        {
+            var id = await task;
+            if (_web?.CoreWebView2 != engine) return;
+            _cosmeticScriptId = id;
+        }
+        catch
+        {
+            // Движок мог уснуть или закрыться прямо во время ожидания.
+        }
+    }
+
+    /// <summary>
+    /// Хост верхнего документа. Именно он решает, разрешена ли реклама на
+    /// странице: блокируемые адреса лежат на других доменах.
+    /// </summary>
+    private string? CurrentPageHost()
+    {
+        var source = _web?.Source?.ToString() ?? _tab.Url;
+        if (string.IsNullOrWhiteSpace(source)) return null;
+        return Uri.TryCreate(source, UriKind.Absolute, out var uri) ? uri.Host : null;
+    }
+
     private void WireEvents()
     {
         var core = _web!.CoreWebView2!;
+
+        // Фильтр ставится один раз на движок, а решение вычисляется на каждый
+        // запрос: переключение блокировки по клику тогда действует мгновенно,
+        // без перерегистрации фильтров.
+        try
+        {
+            core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
+            core.WebResourceRequested += (_, e) =>
+            {
+                if (!Uri.TryCreate(e.Request.Uri, UriKind.Absolute, out var uri)) return;
+                if (!_isBlocked(uri, CurrentPageHost())) return;
+
+                _blockedCount++;
+                // Ответ 403 с пустым телом: элемент iframe получает «битую»
+                // картинку нулевого размера, скрипты не исполняются, а счётчик
+                // страницы не узнаёт, что был отправлен запрос.
+                e.Response = core.Environment.CreateWebResourceResponse(
+                    null, 403, "Blocked", "Content-Type: text/plain");
+            };
+        }
+        catch
+        {
+            // Движок без фильтра работает, просто без блокировки: ронять
+            // вкладку из-за неё было бы хуже, чем показать рекламу.
+        }
+
+        RefreshCosmeticScript();
 
         core.NavigationStarting += (_, e) =>
         {
@@ -187,6 +309,10 @@ public partial class BrowserTabView : UserControl
             // Флаг загрузки живёт на модели: по нему хост переключает кнопку
             // тулбара на «Остановить». SourceChanged про него не знает.
             _tab.IsLoading = true;
+            // Перерегистрируем маскировку на каждой навигации: при создании
+            // движка хост страницы ещё неизвестен, и скрипт, зарегистрированный
+            // выше, оказался бы пустым — маскировки просто не было бы.
+            RefreshCosmeticScript(HostOf(e.Uri));
             StateChanged?.Invoke(_tab);
         };
 
@@ -253,4 +379,8 @@ public partial class BrowserTabView : UserControl
         if (Uri.TryCreate(url, UriKind.Absolute, out var uri)) return uri.Host;
         return "Вкладка";
     }
+
+    /// <summary>Хост URL или null для about:/data: — блокировать там нечего.</summary>
+    private static string? HostOf(string? url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri.Host : null;
 }

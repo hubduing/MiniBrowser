@@ -140,6 +140,8 @@ public class SettingsServiceTests : IDisposable
             SearchUrl = "https://y/{0}",
             ShowStatusBar = false,
             DefaultFontSize = 13,
+            AdBlockEnabled = false,
+            AdBlockDisabledHosts = new List<string> { "example.com" },
         };
         SettingsService.ResetToDefaults(settings);
         Assert.Equal(100, settings.ZoomPercent);
@@ -150,5 +152,82 @@ public class SettingsServiceTests : IDisposable
         Assert.Equal("https://www.google.com/search?q={0}", settings.SearchUrl);
         Assert.True(settings.ShowStatusBar);
         Assert.Equal(16, settings.DefaultFontSize);
+        Assert.True(settings.AdBlockEnabled);
+        Assert.Empty(settings.AdBlockDisabledHosts);
+    }
+
+    [Fact]
+    public void ResetToDefaults_DoesNotShareListWithNewDefaults()
+    {
+        // Сброс обязан отвязать список от того дефолтного экземпляра:
+        // иначе очистка белого списка обнулила бы и будущие дефолты.
+        var settings = new AppSettings
+        {
+            AdBlockDisabledHosts = new List<string> { "example.com" },
+        };
+        SettingsService.ResetToDefaults(settings);
+        Assert.Empty(settings.AdBlockDisabledHosts);
+
+        // Дальше пользователь добавляет домен — и «чистые» дефолты
+        // (создаваемые заново на каждый ResetToDefaults) не должны пострадать.
+        settings.AdBlockDisabledHosts.Add("site.org");
+        var second = new AppSettings();
+        SettingsService.ResetToDefaults(second);
+        Assert.Empty(second.AdBlockDisabledHosts);
+    }
+
+    [Fact]
+    public void Load_OldFileWithoutAdBlockFields_UsesSafeDefaults()
+    {
+        // settings.json, записанный до появления блокировки: полей нет вовсе.
+        // Список обязан быть живым, иначе первое переключение упало бы в null.
+        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+        File.WriteAllText(_path, "{ \"ZoomPercent\": 100 }");
+        var service = new SettingsService(_path);
+
+        Assert.True(service.Current.AdBlockEnabled);
+        Assert.NotNull(service.Current.AdBlockDisabledHosts);
+        Assert.Empty(service.Current.AdBlockDisabledHosts);
+    }
+
+    [Fact]
+    public void Load_MessyWhitelist_IsNormalizedAndDeduped()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+        File.WriteAllText(_path, "{ \"AdBlockDisabledHosts\": [\"WWW.Example.com\", \"example.com\", \"\", \"http://site.org/path\", \"site.org:8080\"] }");
+        var service = new SettingsService(_path);
+
+        Assert.Equal(new[] { "example.com", "site.org" }, service.Current.AdBlockDisabledHosts);
+    }
+
+    [Fact]
+    public void Load_UnparsableWhitelistEntry_DoesNotBreakSettings()
+    {
+        // Кривой домен обязан отсеяться молча: иначе исключение из Validate
+        // уронило бы Save(), и файл настроек перестал бы сохраняться вовсе.
+        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+        File.WriteAllText(_path, "{ \"ZoomPercent\": 150, \"AdBlockDisabledHosts\": [\"http://\", \"good.example\"] }");
+        var service = new SettingsService(_path);
+
+        Assert.Equal(150, service.Current.ZoomPercent);
+        Assert.Equal(new[] { "good.example" }, service.Current.AdBlockDisabledHosts);
+
+        // И запись после починки обязана пройти.
+        service.Current.WindowWidth = 1000;
+        service.Save();
+        Assert.Contains("good.example", File.ReadAllText(_path));
+    }
+
+    [Fact]
+    public void SaveAndLoad_RoundTrips_AdBlockState()
+    {
+        var first = new SettingsService(_path);
+        first.Current.AdBlockEnabled = false;
+        first.Current.AdBlockDisabledHosts.Add("example.com");
+        first.Save();
+
+        var second = new SettingsService(_path);
+        Assert.False(second.Current.AdBlockEnabled);
+        Assert.Equal(new[] { "example.com" }, second.Current.AdBlockDisabledHosts);
     }
 }
