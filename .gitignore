@@ -4,8 +4,8 @@ publish/
 *.user
 .vs/
 *.log
+# Скриншоты и временные артефакты отладки — только в корне репозитория.
+/*.png
 build.txt
-screenshot*.png
-test_*.png
 .worktrees/
 .superpowers/
