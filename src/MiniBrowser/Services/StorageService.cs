@@ -69,6 +69,16 @@ public sealed class StorageService : IDisposable
                     title TEXT NOT NULL DEFAULT '',
                     is_active INTEGER NOT NULL DEFAULT 0
                 );
+                -- Хранилище паролей: секрет зашифрован DPAPI (см. PasswordStore),
+                -- дедуп по паре хост+логин — повторный импорт не создаёт дублей.
+                CREATE TABLE IF NOT EXISTS passwords (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    host TEXT NOT NULL,
+                    username TEXT NOT NULL,
+                    secret BLOB NOT NULL,
+                    added_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                    UNIQUE(host, username)
+                );
                 """);
         }
         catch
@@ -92,15 +102,83 @@ public sealed class StorageService : IDisposable
         catch { /* БД недоступна — игнорируем */ }
     }
 
-    public void AddBookmark(string url, string title)
+    /// <summary>
+    /// Добавить закладку. Возвращает false, если url пуст или закладка уже
+    /// была (INSERT OR IGNORE — дедуп по url при импорте из других браузеров).
+    /// </summary>
+    public bool AddBookmark(string url, string title)
     {
-        if (_connection is null || string.IsNullOrWhiteSpace(url)) return;
+        if (_connection is null || string.IsNullOrWhiteSpace(url)) return false;
         try
         {
-            Exec("INSERT OR REPLACE INTO bookmarks (url, title) VALUES ($u, $t);",
-                ("$u", url), ("$t", Trim(title, 200)));
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "INSERT OR IGNORE INTO bookmarks (url, title) VALUES ($u, $t);";
+            cmd.Parameters.AddWithValue("$u", url);
+            cmd.Parameters.AddWithValue("$t", Trim(title, 200));
+            return cmd.ExecuteNonQuery() > 0;
+        }
+        catch { return false; }
+    }
+
+    /// <summary>Добавить пароль (секрет — уже зашифрованный DPAPI байт). False — дубль пары host+логин.</summary>
+    public bool AddPassword(string host, string username, byte[] secret)
+    {
+        if (_connection is null || string.IsNullOrWhiteSpace(host)) return false;
+        try
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "INSERT OR IGNORE INTO passwords (host, username, secret) VALUES ($h, $u, $s);";
+            cmd.Parameters.AddWithValue("$h", host);
+            cmd.Parameters.AddWithValue("$u", username);
+            cmd.Parameters.AddWithValue("$s", secret);
+            return cmd.ExecuteNonQuery() > 0;
+        }
+        catch { return false; }
+    }
+
+    /// <summary>Все пароли без секрета: список в UI не должен тянуть шифраты.</summary>
+    public List<StoredPassword> GetPasswords()
+    {
+        var result = new List<StoredPassword>();
+        if (_connection is null) return result;
+        try
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "SELECT id, host, username FROM passwords ORDER BY host, username;";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+                result.Add(new StoredPassword(reader.GetInt32(0), reader.GetString(1), reader.GetString(2)));
         }
         catch { }
+        return result;
+    }
+
+    /// <summary>Зашифрованный секрет записи или null, если записи нет.</summary>
+    public byte[]? GetPasswordSecret(int id)
+    {
+        if (_connection is null) return null;
+        try
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "SELECT secret FROM passwords WHERE id = $i;";
+            cmd.Parameters.AddWithValue("$i", id);
+            return cmd.ExecuteScalar() as byte[];
+        }
+        catch { return null; }
+    }
+
+    /// <summary>Удалить пароль. False — записи не было.</summary>
+    public bool DeletePassword(int id)
+    {
+        if (_connection is null) return false;
+        try
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "DELETE FROM passwords WHERE id = $i;";
+            cmd.Parameters.AddWithValue("$i", id);
+            return cmd.ExecuteNonQuery() > 0;
+        }
+        catch { return false; }
     }
 
     public List<Bookmark> GetAllBookmarks()
