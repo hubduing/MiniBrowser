@@ -20,11 +20,7 @@
                 <Button Content="☆" Click="Bookmark_Click"
                         Style="{StaticResource FlatToolButton}" ToolTip="Добавить в закладки (Ctrl+D)"/>
                 <Button x:Name="MenuButton" Content="☰" Click="Menu_Click"
-                        Style="{StaticResource FlatToolButton}" ToolTip="Закладки и история">
-                    <Button.ContextMenu>
-                        <ContextMenu x:Name="Menu" Opened="Menu_Opened"/>
-                    </Button.ContextMenu>
-                </Button>
+                        Style="{StaticResource FlatToolButton}" ToolTip="Меню (Ctrl+M)"/>
             </StackPanel>
 
             <TextBox x:Name="AddressBox"

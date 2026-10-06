@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using MiniBrowser.Models;
 using MiniBrowser.Services;
+using MiniBrowser.ViewModels;
 using MiniBrowser.Views;
 
 namespace MiniBrowser;
@@ -14,6 +15,8 @@ public partial class MainWindow : Window, IBrowserActions
     private readonly SettingsService _settings = new();
     private readonly TabManager _tabManager;
     private readonly string[] _startupUrls;
+    private readonly MenuDrawerViewModel _drawerVm;
+    private bool _menuOpen;
     private Tab? _titleTab;
     private bool _started;
     // Полноэкранный режим имеет два независимых источника:
@@ -35,6 +38,10 @@ public partial class MainWindow : Window, IBrowserActions
         InitializeComponent();
         _startupUrls = startupUrls ?? Array.Empty<string>();
 
+        // Размер — до первого OnContentRendered, иначе окно мигнёт дефолтным.
+        if (_settings.Current.WindowMaximized) WindowState = WindowState.Maximized;
+        else { Width = _settings.Current.WindowWidth; Height = _settings.Current.WindowHeight; }
+
         _tabManager = new TabManager(ContentHost, _storage, this, () => _settings.EffectiveZoom);
         _tabManager.TabsChanged += RefreshTabStrip;
         _tabManager.ActiveTabChanged += OnActiveTabChanged;
@@ -47,15 +54,22 @@ public partial class MainWindow : Window, IBrowserActions
         TabStrip.TabCloseRequested += CloseTab;
         TabStrip.NewTabRequested += () => NewTab();
 
-        Toolbar.Storage = _storage;
         Toolbar.SearchTemplate = _settings.Current.SearchUrl;
         Toolbar.NavigateRequested += url => _tabManager.NavigateActive(url);
-        Toolbar.OpenRequested += url => _tabManager.NavigateActive(url);
         Toolbar.BackRequested += _tabManager.GoBackActive;
         Toolbar.ForwardRequested += _tabManager.GoForwardActive;
         Toolbar.RefreshRequested += _tabManager.ReloadActive;
         Toolbar.StopRequested += _tabManager.StopActive;
         Toolbar.BookmarkAddRequested += AddBookmark;
+
+        _drawerVm = new MenuDrawerViewModel(_storage, _settings);
+        Drawer.DataContext = _drawerVm;
+        _drawerVm.NavigateRequested += url => { _tabManager.NavigateActive(url); SetMenuOpen(false); };
+        // Двойной клик по строке поднимает событие вида, а не VM: навигация та же.
+        Drawer.OpenUrlRequested += url => { _tabManager.NavigateActive(url); SetMenuOpen(false); };
+        _drawerVm.HistoryChanged += () => StatusText.Text = "История очищена";
+        _drawerVm.SettingsChanged += ApplySettings;
+        Toolbar.ToggleDrawerRequested += () => SetMenuOpen(!_menuOpen);
 
         // Горячие клавиши перехватываем хуком: сообщения клавиатуры приходят и на
         // дочерний HWND WebView2, WPF-события окна их не видят.
@@ -67,7 +81,6 @@ public partial class MainWindow : Window, IBrowserActions
     private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
 
     private const int WhKeyboardLl = 13;
-    private const string HomeUrl = "https://www.google.com/";
     private static readonly IntPtr HookFailed = IntPtr.Zero;
     private LowLevelKeyboardProc? _hookProc;
     private IntPtr _keyboardHook = IntPtr.Zero;
@@ -156,7 +169,7 @@ public partial class MainWindow : Window, IBrowserActions
         }
         else
         {
-            _tabManager.NewTab(HomeUrl);
+            _tabManager.NewTab(_settings.Current.HomeUrl);
         }
     }
 
@@ -164,7 +177,7 @@ public partial class MainWindow : Window, IBrowserActions
 
     private void NewTab()
     {
-        _tabManager.NewTab(HomeUrl);
+        _tabManager.NewTab(_settings.Current.HomeUrl);
         Toolbar.FocusAddress();
     }
 
@@ -252,13 +265,58 @@ public partial class MainWindow : Window, IBrowserActions
 
     void IBrowserActions.Reload() => _tabManager.ReloadActive();
 
-    // Заглушки панели меню: окно ещё не хостит MenuDrawerView (подключение — задача 8).
-    // Пока клавиши безопасно ничего не делают, а IsMenuOpen == false оставляет
-    // Esc существующей логике выхода из полноэкранного режима.
-    void IBrowserActions.ToggleMenu() { }
-    void IBrowserActions.ShowHistory() { }
-    void IBrowserActions.ShowBookmarks() { }
-    bool IBrowserActions.IsMenuOpen => false;
+    /// <summary>
+    /// Открытие и закрытие панели. Popup — отдельное окно: IsOpen показывает и
+    /// прячет его целиком, а внутренняя анимация слайда идёт в самом Drawer.
+    /// Закрытие гасит IsOpen с задержкой под анимацию (180 мс): мгновенное
+    /// закрытие оборвало бы слайд-аут на первом кадре.
+    /// </summary>
+    private async void SetMenuOpen(bool open)
+    {
+        if (open)
+        {
+            // Списки могли устареть, пока панель была скрыта (закладка по Ctrl+D,
+            // визиты в историю): перечитываем перед показом, иначе панель врёт.
+            _drawerVm.RefreshBookmarks();
+            _drawerVm.RefreshHistory();
+            _menuOpen = true;
+            SyncDrawerSize();
+            DrawerPopup.IsOpen = true;
+            Drawer.SetOpen(true);
+            return;
+        }
+
+        _menuOpen = false;
+        Drawer.SetOpen(false);
+        // Флаг перепроверяем — панель могли успеть открыть заново за 180 мс.
+        await Task.Delay(180);
+        if (!_menuOpen)
+            DrawerPopup.IsOpen = false;
+    }
+
+    /// <summary>
+    /// Размер панели под область содержимого. Popup живёт в отдельном окне,
+    /// поэтому привязки ElementName туда не резолвятся — задаём размер кодом.
+    /// </summary>
+    private void SyncDrawerSize()
+    {
+        Drawer.Width = ContentHost.ActualWidth;
+        Drawer.Height = ContentHost.ActualHeight;
+    }
+
+    /// <summary>Окно растянули при открытой панели — тянем Popup следом.</summary>
+    private void ContentHost_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (_menuOpen) SyncDrawerSize();
+    }
+
+    /// <summary>Панель попросила закрыться (✕, Esc внутри неё, клик по её затемнению).</summary>
+    private void Drawer_CloseRequested() => SetMenuOpen(false);
+
+    void IBrowserActions.ToggleMenu() => SetMenuOpen(!_menuOpen);
+    void IBrowserActions.ShowHistory() { _drawerVm.ClearSearchCommand.Execute(null); Drawer.SelectTab(1); SetMenuOpen(true); }
+    void IBrowserActions.ShowBookmarks() { _drawerVm.ClearSearchCommand.Execute(null); Drawer.SelectTab(0); SetMenuOpen(true); }
+    bool IBrowserActions.IsMenuOpen => _menuOpen;
 
     private void SwitchTab(int delta)
     {
@@ -280,6 +338,39 @@ public partial class MainWindow : Window, IBrowserActions
         if (_tabManager.ActiveTab is not { } tab || string.IsNullOrWhiteSpace(tab.Url)) return;
         _storage.AddBookmark(tab.Url, tab.Title);
         StatusText.Text = $"Закладка сохранена: {tab.Title}";
+    }
+
+    /// <summary>
+    /// Применяет настройки, уже записанные в Current: SettingsChanged поднимается
+    /// view model строго после изменения, хост лишь переносит их на живое окно.
+    /// </summary>
+    private void ApplySettings()
+    {
+        var s = _settings.Current;
+
+        // Масштаб — на все живые движки; уснувшие вкладки возьмут значение
+        // при пробуждении через zoomProvider.
+        _tabManager.ApplyZoomToAllTabs();
+
+        StatusBarBorder.Visibility = s.ShowStatusBar ? Visibility.Visible : Visibility.Collapsed;
+
+        // Поисковая система живёт в адресной строке, а не в самом Drawer.
+        Toolbar.SearchTemplate = s.SearchUrl;
+
+        // Живой размер меняют только пресеты и сброс (остальные настройки значений
+        // ширины/высоты не трогают, поэтому присваивание для них — no-op).
+        // Развёрнутое окно не трогаем: там Width/Height равны размеру экрана.
+        if (WindowState == WindowState.Normal)
+        {
+            if (Math.Abs(Width - s.WindowWidth) > 0.5) Width = s.WindowWidth;
+            if (Math.Abs(Height - s.WindowHeight) > 0.5) Height = s.WindowHeight;
+        }
+
+        _settings.Save();
+
+        // Размер окна отсюда намеренно не пишется в настройки при каждом вызове:
+        // иначе перетаскивание окна поверх открытой панели заспамило бы файл.
+        // Источник размера — пресеты, восстановление при старте и Window_Closing.
     }
 
     // ---- Системные обработчики ----
@@ -325,6 +416,12 @@ public partial class MainWindow : Window, IBrowserActions
             Toolbar.Visibility = Visibility.Collapsed;
             TabStrip.Visibility = Visibility.Collapsed;
             StatusText.Visibility = Visibility.Collapsed;
+            StatusBarBorder.Visibility = Visibility.Collapsed;
+            // Панель — отдельное окно поверх: гасим сразу, без задержки анимации,
+            // иначе останется висеть над полноэкранным видео.
+            _menuOpen = false;
+            Drawer.SetOpen(false);
+            DrawerPopup.IsOpen = false;
 
             WindowStyle = WindowStyle.None;
             ResizeMode = ResizeMode.NoResize;
@@ -335,6 +432,14 @@ public partial class MainWindow : Window, IBrowserActions
             Toolbar.Visibility = Visibility.Visible;
             TabStrip.Visibility = Visibility.Visible;
             StatusText.Visibility = Visibility.Visible;
+            // Статусную строку могли скрыть в настройках: восстанавливаем её
+            // состояние из настроек, а не всегда видимой.
+            StatusBarBorder.Visibility = _settings.Current.ShowStatusBar
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+
+            // Панель при уходе в полноэкранный режим уже принудительно закрыта
+            // выше (флаг сброшен), поэтому здесь её не трогаем: она не залипнет.
 
             WindowStyle = _savedWindowStyle;
             ResizeMode = _savedResizeMode;
@@ -346,6 +451,22 @@ public partial class MainWindow : Window, IBrowserActions
     {
         if (Hotkeys.TryHandle(e.Key, Keyboard.Modifiers, this))
             e.Handled = true;
+    }
+
+    private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        if (_settings.Current.WindowMaximized)
+        {
+            // Восстанавливаем обычный размер: иначе в настройки попадёт
+            // развёрнутое на весь экран состояние.
+            var bounds = RestoreBounds;
+            if (bounds is { Width: > 0, Height: > 0 })
+            {
+                _settings.Current.WindowWidth = bounds.Width;
+                _settings.Current.WindowHeight = bounds.Height;
+            }
+        }
+        _settings.Save();
     }
 
     private void Window_Closed(object sender, EventArgs e)

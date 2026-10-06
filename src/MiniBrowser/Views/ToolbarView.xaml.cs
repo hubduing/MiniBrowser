@@ -5,19 +5,18 @@ using MiniBrowser.Services;
 
 namespace MiniBrowser.Views;
 
-/// <summary>Панель инструментов: навигация, адресная строка, закладки и история.</summary>
+/// <summary>Панель инструментов: навигация, адресная строка и кнопка меню.</summary>
 public partial class ToolbarView : UserControl
 {
     public event Action<string>? NavigateRequested;
-    public event Action<string>? OpenRequested;
     public event Action? BackRequested;
     public event Action? ForwardRequested;
     public event Action? RefreshRequested;
     public event Action? StopRequested;
     public event Action? BookmarkAddRequested;
 
-    /// <summary>Хранилище для наполнения меню закладками/историей.</summary>
-    public StorageService? Storage { get; set; }
+    /// <summary>Кнопка ☰ больше не держит ContextMenu: она просит хост открыть панель.</summary>
+    public event Action? ToggleDrawerRequested;
 
     /// <summary>
     /// Шаблон поиска приходит снаружи из настроек: тулбар не знает про SettingsService,
@@ -163,45 +162,6 @@ public partial class ToolbarView : UserControl
     private void Stop_Click(object sender, RoutedEventArgs e) => StopRequested?.Invoke();
     private void Bookmark_Click(object sender, RoutedEventArgs e) => BookmarkAddRequested?.Invoke();
 
-    private void Menu_Click(object sender, RoutedEventArgs e)
-    {
-        Menu.PlacementTarget = MenuButton;
-        Menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
-        Menu.IsOpen = true;
-    }
-
-    private void Menu_Opened(object sender, RoutedEventArgs e)
-    {
-        Menu.Items.Clear();
-        if (Storage is null) return;
-
-        AddSection("Закладки", Storage.GetBookmarks()
-            .Select(b => (b.Title, b.Url)));
-        Menu.Items.Add(new Separator());
-        AddSection("История", Storage.GetRecentHistory()
-            .Select(h => (string.IsNullOrEmpty(h.Title) ? h.Url : h.Title, h.Url)));
-
-        void AddSection(string header, IEnumerable<(string Title, string Url)> items)
-        {
-            var title = new MenuItem { Header = header, IsEnabled = false, FontWeight = FontWeights.SemiBold };
-            Menu.Items.Add(title);
-
-            var any = false;
-            foreach (var (itemTitle, url) in items)
-            {
-                any = true;
-                var item = new MenuItem
-                {
-                    Header = itemTitle,
-                    Tag = url,
-                    ToolTip = url,
-                };
-                item.Click += (_, _) => OpenRequested?.Invoke(url);
-                Menu.Items.Add(item);
-            }
-
-            if (!any)
-                Menu.Items.Add(new MenuItem { Header = "  пусто", IsEnabled = false });
-        }
-    }
+    /// <summary>Кнопка меню делегирует открытие панели хосту через событие.</summary>
+    private void Menu_Click(object sender, RoutedEventArgs e) => ToggleDrawerRequested?.Invoke();
 }

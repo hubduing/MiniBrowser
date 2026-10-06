@@ -107,7 +107,76 @@ public partial class MenuDrawerView : UserControl
         SyncCombos();
     }
 
-    private void OnVmSettingsChanged() => SyncCombos();
+    private void OnVmSettingsChanged()
+    {
+        SyncCombos();
+        SyncSettingsControls();
+    }
+
+    /// <summary>
+    /// AppSettings — POCO без уведомлений: сброс меняет Current молча, и TwoWay-привязки
+    /// не узнают. Освежаем простые контролы вручную; флаг гасит эхо точно как у комбо.
+    /// </summary>
+    private void SyncSettingsControls()
+    {
+        var vm = DataContext as MenuDrawerViewModel;
+        if (vm is null) return;
+        _syncingCombos = true;
+        try
+        {
+            ZoomSlider.Value = vm.Settings.Current.ZoomPercent;
+            StatusBarBox.IsChecked = vm.Settings.Current.ShowStatusBar;
+            RememberSizeBox.IsChecked = vm.Settings.Current.WindowMaximized;
+            HomeUrlBox.Text = vm.Settings.Current.HomeUrl;
+        }
+        finally
+        {
+            _syncingCombos = false;
+        }
+    }
+
+    /// <summary>
+    /// Ползунок пишет прямо в Current (привязка тоже пишет, значение то же):
+    /// без уведомления хост не узнал бы о новом масштабе и не применил его.
+    /// </summary>
+    private void ZoomSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_syncingCombos) return;
+        var vm = DataContext as MenuDrawerViewModel;
+        if (vm is null) return;
+        vm.Settings.Current.ZoomPercent = e.NewValue;
+        vm.NotifySettingsChanged();
+    }
+
+    /// <summary>
+    /// Click, а не Checked: программное состояние после сброса не должно уведомлять.
+    /// Значение пишем явно — порядок привязки и события нам не важен.
+    /// </summary>
+    private void StatusBarBox_Click(object sender, RoutedEventArgs e)
+    {
+        var vm = DataContext as MenuDrawerViewModel;
+        if (vm is null) return;
+        if (sender is CheckBox box)
+        {
+            vm.Settings.Current.ShowStatusBar = box.IsChecked == true;
+            vm.NotifySettingsChanged();
+        }
+    }
+
+    /// <summary>
+    /// Тот же приём, что у StatusBarBox: чистая TwoWay-привязка молча меняла бы
+    /// значение без сохранения — хост узнаёт о новом флаге только через событие.
+    /// </summary>
+    private void RememberSizeBox_Click(object sender, RoutedEventArgs e)
+    {
+        var vm = DataContext as MenuDrawerViewModel;
+        if (vm is null) return;
+        if (sender is CheckBox box)
+        {
+            vm.Settings.Current.WindowMaximized = box.IsChecked == true;
+            vm.NotifySettingsChanged();
+        }
+    }
 
     /// <summary>
     /// Начальный выбор обоих ComboBox выставляем кодом: привязка SelectedValue к double
