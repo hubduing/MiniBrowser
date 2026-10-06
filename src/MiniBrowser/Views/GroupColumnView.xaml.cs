@@ -1,4 +1,3 @@
-using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -10,9 +9,10 @@ using MiniBrowser.Services;
 namespace MiniBrowser.Views;
 
 /// <summary>
-/// Колонка одной группы в вертикальной полосе вкладок: цветная метка, заголовок
-/// со сворачиванием и переименованием, список вкладок. Все решения принимает
-/// <see cref="TabManager"/>, здесь только геометрия и события наверх.
+/// Строка одной группы в полосе вкладок: цветная метка, заголовок со
+/// сворачиванием и переименованием, горизонтальный список вкладок. Все
+/// решения принимает <see cref="TabManager"/>, здесь только геометрия и
+/// события наверх.
 /// </summary>
 public partial class GroupColumnView : UserControl
 {
@@ -28,6 +28,18 @@ public partial class GroupColumnView : UserControl
         (Brush)Application.Current.FindResource("GroupColor6"),
         (Brush)Application.Current.FindResource("GroupColor7"),
     };
+
+    /// <summary>
+    /// Подтон цвета группы для шапки и свёрнутой строки: та же кисть, лишь
+    /// чуть прозрачнее — группы различимы беглым взглядом, текст читается.
+    /// </summary>
+    private static readonly Brush[] Tints = Palette.Select(brush =>
+    {
+        var tint = brush.Clone();
+        tint.Opacity = 0.15;
+        tint.Freeze();
+        return tint;
+    }).ToArray();
 
     private TabGroup? _group;
 
@@ -114,21 +126,22 @@ public partial class GroupColumnView : UserControl
             return;
         }
 
+        var tint = Tints[Math.Clamp(_group.ColorIndex, 0, Tints.Length - 1)];
         ColorMark.Background = Palette[Math.Clamp(_group.ColorIndex, 0, Palette.Length - 1)];
+        // Подтон цвета под именем: шапка и свёрнутая строка выглядят «своими».
+        Header.Background = tint;
+        CollapsedPanel.Background = tint;
         NameText.Text = _group.Name;
         CollapsedName.Text = _group.Name;
         Badge.Text = _group.Count.ToString();
         CollapsedBadge.Text = _group.Count.ToString();
-        // Имя под курсором свёрнутой колонки — подсказка для длинных названий.
+        // Имя под курсором свёрнутой строки — подсказка для длинных названий.
         CollapsedPanel.ToolTip = _group.Name;
 
         var collapsed = _group.IsCollapsed;
         ExpandedPanel.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
-        // Свёрнутая колонка показывает имя и счётчик, без вкладок.
+        // Свёрнутая группа показывает имя и счётчик, без вкладок.
         CollapsedPanel.Visibility = collapsed ? Visibility.Visible : Visibility.Collapsed;
-        // Ширина свёрнутой — по содержимому (имя влезает с запасом через
-        // MaxWidth у имени), развёрнутой — всегда как у обычной колонки.
-        Width = collapsed ? double.NaN : 200;
         CollapseButton.Content = collapsed ? "▸" : "▾";
     }
 
@@ -298,8 +311,6 @@ public partial class GroupColumnView : UserControl
 
     private void Tab_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
-        File.AppendAllText(Path.Combine(Path.GetTempPath(), "mb-drag.log"),
-            $"down btn={e.ChangedButton} src={e.OriginalSource?.GetType().Name}\n");
         if (e.ChangedButton != MouseButton.Left) return;
         // Вкладка лежит в шаблоне строки, а событие пришло на ItemsControl:
         // поднимаемся по визуальному дереву до элемента с вкладкой в DataContext.
@@ -342,8 +353,6 @@ public partial class GroupColumnView : UserControl
 
     private void Tab_PreviewMouseMove(object sender, MouseEventArgs e)
     {
-        File.AppendAllText(Path.Combine(Path.GetTempPath(), "mb-drag.log"),
-            $"move left={e.LeftButton} tab={_dragTab?.Id}\n");
         if (e.LeftButton != MouseButtonState.Pressed || _dragTab is null) return;
 
         var delta = e.GetPosition(this) - _dragOrigin;

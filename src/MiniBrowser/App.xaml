@@ -400,7 +400,7 @@
 
         <Style x:Key="GroupBadge" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource T.Muted}"/>
-            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontSize" Value="11"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="Margin" Value="0,0,6,0"/>
         </Style>

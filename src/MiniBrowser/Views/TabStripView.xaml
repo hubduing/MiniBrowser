@@ -9,16 +9,17 @@
             <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="4,4,4,2">
                 <Button Content="+ Группа"
                         Style="{StaticResource FlatToolButton}"
+                        FontSize="14"
                         Click="NewGroup_Click"
                         ToolTip="Создать группу вкладок"/>
                 <Button Content="+ Вкладка"
                         Style="{StaticResource FlatToolButton}"
+                        FontSize="14"
                         Click="NewTab_Click"
                         ToolTip="Новая вкладка в активной группе (Ctrl+T)"/>
             </StackPanel>
 
-            <!-- Колонки групп переносятся по строкам: мест в полосе на десяток
-                 групп не хватает почти никогда. -->
+            <!-- Группы — строки на всю ширину панели, одна под другой. -->
             <ScrollViewer x:Name="StripScroll"
                           VerticalScrollBarVisibility="Auto"
                           HorizontalScrollBarVisibility="Disabled"
@@ -29,7 +30,7 @@
                 <ItemsControl x:Name="ColumnsItems">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
-                            <WrapPanel Orientation="Horizontal"/>
+                            <StackPanel Orientation="Vertical"/>
                         </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>

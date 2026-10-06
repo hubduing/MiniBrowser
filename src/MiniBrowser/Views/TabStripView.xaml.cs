@@ -8,9 +8,10 @@ using MiniBrowser.Services;
 namespace MiniBrowser.Views;
 
 /// <summary>
-/// Вертикальная полоса групп вкладок слева: колонки, перетаскивание вкладок и
-/// групп, контекстные меню. Решения принимает не она, а <see cref="TabManager"/>
-/// и <see cref="TabDropResolver"/>: здесь только геометрия и события наверх.
+/// Полоса групп вкладок слева: строки групп на всю ширину, перетаскивание
+/// вкладок и групп, контекстные меню. Решения принимает не она, а
+/// <see cref="TabManager"/> и <see cref="TabDropResolver"/>: здесь только
+/// геометрия и события наверх.
 /// </summary>
 public partial class TabStripView : UserControl
 {
@@ -153,15 +154,15 @@ public partial class TabStripView : UserControl
         e.Handled = true;
     }
 
-    /// <summary>Индекс колонки, в которую надо вставить перетаскиваемую группу.</summary>
+    /// <summary>Индекс группы, в которую надо вставить перетаскиваемую группу.</summary>
     private int GroupInsertIndexAt(Point pointer)
     {
+        // Группы — строки, одна под другой: вставка перед первой строкой,
+        // верхняя половина которой ещё ниже курсора.
         for (var i = 0; i < _columns.Count; i++)
         {
-            var bounds = _columns[i].TranslatePoint(
-                new Point(0, 0), StripScroll).X;
-            var width = _columns[i].ActualWidth;
-            if (pointer.X < bounds + width / 2) return i;
+            var top = _columns[i].TranslatePoint(new Point(0, 0), this).Y;
+            if (pointer.Y < top + _columns[i].ActualHeight / 2) return i;
         }
         return _columns.Count;
     }
