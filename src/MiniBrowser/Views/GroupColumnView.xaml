@@ -135,21 +135,26 @@
                  разворачивает её обратно. -->
             <StackPanel x:Name="CollapsedPanel"
                         Grid.Column="1"
-                        Orientation="Horizontal"
+                        Orientation="Vertical"
                         HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
                         Visibility="Collapsed"
                         Cursor="Hand"
                         MouseLeftButtonUp="Collapsed_Click">
+                <!-- LayoutTransform, а не RenderTransform: WPF измеряет текст
+                     до поворота, иначе колонка получает горизонтальную длину
+                     имени и узкие 32 px его обрезают. -->
                 <TextBlock x:Name="VerticalName"
                            FontSize="12"
-                           RenderTransformOrigin="0,0"
-                           Margin="0,2,0,0"
+                           Margin="0,6,0,0"
+                           HorizontalAlignment="Center"
                            Foreground="{StaticResource T.Muted}">
-                    <TextBlock.RenderTransform>
+                    <TextBlock.LayoutTransform>
                         <RotateTransform Angle="270"/>
-                    </TextBlock.RenderTransform>
+                    </TextBlock.LayoutTransform>
                 </TextBlock>
-                <TextBlock x:Name="CollapsedBadge" Style="{StaticResource GroupBadge}"/>
+                <TextBlock x:Name="CollapsedBadge" Style="{StaticResource GroupBadge}"
+                           HorizontalAlignment="Center" Margin="0"/>
             </StackPanel>
         </Grid>
     </Border>

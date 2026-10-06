@@ -110,7 +110,7 @@ public partial class GroupColumnView : UserControl
         if (_group is null)
         {
             ExpandedPanel.Visibility = Visibility.Collapsed;
-            CollapsedPanel.Visibility = Visibility.Hidden;
+            CollapsedPanel.Visibility = Visibility.Collapsed;
             return;
         }
 
@@ -119,10 +119,14 @@ public partial class GroupColumnView : UserControl
         VerticalName.Text = _group.Name;
         Badge.Text = _group.Count.ToString();
         CollapsedBadge.Text = _group.Count.ToString();
+        // Имя под курсором свёрнутой колонки — подсказка для длинных названий.
+        CollapsedPanel.ToolTip = _group.Name;
 
         var collapsed = _group.IsCollapsed;
         ExpandedPanel.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
-        CollapsedPanel.Visibility = collapsed ? Visibility.Hidden : Visibility.Collapsed;
+        // Свёрнутая колонка показывает имя вертикально — панель видима,
+        // а не Hidden: иначе узкая полоса остаётся пустой.
+        CollapsedPanel.Visibility = collapsed ? Visibility.Visible : Visibility.Collapsed;
         // Свёрнутая группа — узкая цветная полоса, вкладки в ней не видны.
         Width = collapsed ? 32 : 200;
         CollapseButton.Content = collapsed ? "▸" : "▾";
